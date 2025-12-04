@@ -29,6 +29,7 @@ type Edge struct {
 type Finder struct {
 	store           *orderbook.Store
 	conversionRates []ConversionRate
+	exchangeFees    map[orderbook.PriceSourceName]float64 // fee as decimal (0.001 = 0.1%)
 	startAmount     float64
 	targetCurrency  string
 	maxDepth        int // Maximum chain length
@@ -48,8 +49,22 @@ func NewFinder(store *orderbook.Store, startAmount float64) *Finder {
 			{From: "PAXG", To: "GOLD18", Rate: 41.4665196},
 			{From: "GOLD18", To: "PAXG", Rate: 1.0 / 41.4665196},
 		},
+		exchangeFees: map[orderbook.PriceSourceName]float64{
+			orderbook.PriceSourceBinance: 0.001,  // 0.1%
+			orderbook.PriceSourceKucoin:  0.001,  // 0.1%
+			orderbook.PriceSourceNobitex: 0.002,  // 0.2%
+			orderbook.PriceSourceEcoGold: 0.0,    // 0%
+		},
 		stopCh: make(chan struct{}),
 	}
+}
+
+// getFee returns the trading fee for an exchange (as decimal)
+func (f *Finder) getFee(exchange orderbook.PriceSourceName) float64 {
+	if fee, ok := f.exchangeFees[exchange]; ok {
+		return fee
+	}
+	return 0.001 // default 0.1%
 }
 
 // Start starts the arbitrage finder, running every interval
@@ -187,7 +202,7 @@ func (f *Finder) buildGraph() map[string][]Edge {
 	return graph
 }
 
-// FindAllChains finds all arbitrage chains starting and ending with targetCurrency
+// FindAllChains finds all arbitrage cycles starting and ending with IRT (no internal loops)
 func (f *Finder) FindAllChains() []ArbitrageChain {
 	graph := f.buildGraph()
 
@@ -207,12 +222,18 @@ func (f *Finder) FindAllChains() []ArbitrageChain {
 
 	var allChains []ArbitrageChain
 
-	// DFS to find all paths from targetCurrency back to targetCurrency
-	var dfs func(current string, path []Edge, visited map[string]bool, amount float64)
-	dfs = func(current string, path []Edge, visited map[string]bool, amount float64) {
-		// If we're back at target currency and have made at least one trade
-		if current == f.targetCurrency && len(path) > 0 {
-			chain := f.buildChainFromPath(path, amount)
+	// DFS to find all cycles starting from IRT
+	var dfs func(current string, path []Edge, visitedCurrencies map[string]bool)
+	dfs = func(current string, path []Edge, visitedCurrencies map[string]bool) {
+		// If we're back at IRT and have made at least 2 steps
+		if current == f.targetCurrency && len(path) >= 2 {
+			// Skip trivial 2-step chains on the same exchange (just buy and sell)
+			// e.g., IRT-nobitex-USDT-nobitex-IRT
+			if isTrivialChain(path) {
+				return
+			}
+			
+			chain := f.buildChainFromPath(path)
 			if chain != nil {
 				allChains = append(allChains, *chain)
 			}
@@ -226,82 +247,61 @@ func (f *Finder) FindAllChains() []ArbitrageChain {
 
 		// Explore all edges from current currency
 		for _, edge := range graph[current] {
-			// For trades, we can use the same currency on different exchanges
-			// So we track visited as "currency:exchange" for trades
-			// For conversions, just track currency
-			var visitKey string
-			if edge.Type == "trade" {
-				visitKey = edge.To + ":" + string(edge.Exchange)
-			} else {
-				visitKey = edge.To + ":conversion"
-			}
-
-			// Allow returning to target currency, but not other revisits
-			if edge.To != f.targetCurrency && visited[visitKey] {
+			// Don't visit the same currency twice (except returning to IRT)
+			// This prevents internal loops like: IRT->A->B->A->IRT
+			if edge.To != f.targetCurrency && visitedCurrencies[edge.To] {
 				continue
 			}
 
-			// Calculate output amount for this edge
-			newAmount := f.calculateEdgeOutput(edge, amount)
-			if newAmount <= 0 {
-				continue
-			}
-
-			// Mark as visited and recurse
+			// Mark currency as visited and recurse
 			newVisited := make(map[string]bool)
-			for k, v := range visited {
+			for k, v := range visitedCurrencies {
 				newVisited[k] = v
 			}
-			newVisited[visitKey] = true
+			newVisited[edge.To] = true
 
 			newPath := make([]Edge, len(path))
 			copy(newPath, path)
 			newPath = append(newPath, edge)
 
-			dfs(edge.To, newPath, newVisited, newAmount)
+			dfs(edge.To, newPath, newVisited)
 		}
 	}
 
-	// Start DFS from target currency
-	visited := make(map[string]bool)
-	dfs(f.targetCurrency, []Edge{}, visited, f.startAmount)
+	// Start DFS from IRT only
+	visited := map[string]bool{f.targetCurrency: true}
+	dfs(f.targetCurrency, []Edge{}, visited)
 
 	return allChains
 }
 
-// calculateEdgeOutput calculates the output amount after traversing an edge
-func (f *Finder) calculateEdgeOutput(edge Edge, inputAmount float64) float64 {
-	if edge.Type == "conversion" {
-		return inputAmount * edge.Rate
+// isTrivialChain checks if a path is a trivial 2-step buy/sell on the same exchange
+// e.g., IRT -> USDT (nobitex) -> IRT (nobitex) is trivial
+func isTrivialChain(path []Edge) bool {
+	if len(path) != 2 {
+		return false
 	}
 
-	// Trade type
-	if edge.OrderBook == nil {
-		return 0
+	// Both must be trades (not conversions)
+	if path[0].Type != "trade" || path[1].Type != "trade" {
+		return false
 	}
 
-	var action string
-	if edge.IsBuy {
-		action = "buy"
-	} else {
-		action = "sell"
-	}
-
-	output, _ := CalculateTradeOutput(edge.OrderBook, action, inputAmount)
-	return output
+	// Same exchange = trivial (just buying and selling on same market)
+	return path[0].Exchange == path[1].Exchange
 }
 
-// buildChainFromPath creates an ArbitrageChain from a path of edges
-func (f *Finder) buildChainFromPath(path []Edge, finalAmount float64) *ArbitrageChain {
-	if len(path) == 0 {
+// buildChainFromPath builds an ArbitrageChain from a path of edges starting from IRT
+func (f *Finder) buildChainFromPath(edges []Edge) *ArbitrageChain {
+	if len(edges) == 0 {
 		return nil
 	}
 
-	steps := make([]ChainStep, 0, len(path))
+	steps := make([]ChainStep, 0, len(edges))
 	pathParts := []string{f.targetCurrency}
 	currentAmount := f.startAmount
 
-	for _, edge := range path {
+	for _, edge := range edges {
 		if edge.Type == "conversion" {
 			outputAmount := currentAmount * edge.Rate
 			steps = append(steps, ChainStep{
@@ -314,11 +314,9 @@ func (f *Finder) buildChainFromPath(path []Edge, finalAmount float64) *Arbitrage
 					AmountOut: outputAmount,
 				},
 			})
-			// Format: IRT-convert-GOLD18
 			pathParts = append(pathParts, "convert", edge.To)
 			currentAmount = outputAmount
 		} else {
-			// Trade
 			var action string
 			if edge.IsBuy {
 				action = "buy"
@@ -331,30 +329,33 @@ func (f *Finder) buildChainFromPath(path []Edge, finalAmount float64) *Arbitrage
 				return nil
 			}
 
+			fee := f.getFee(edge.Exchange)
+			outputAmountAfterFee := outputAmount * (1 - fee)
+
 			step := &TradeStep{
-				Exchange:  edge.Exchange,
-				Action:    action,
-				Base:      edge.Base,
-				Quote:     edge.Quote,
-				Price:     effectivePrice,
-				AmountOut: outputAmount,
+				Exchange:   edge.Exchange,
+				Action:     action,
+				Base:       edge.Base,
+				Quote:      edge.Quote,
+				Price:      effectivePrice,
+				FeePercent: fee * 100,
+				AmountOut:  outputAmountAfterFee,
 			}
 
 			if edge.IsBuy {
-				step.Volume = currentAmount // We spend quote
-				step.Amount = outputAmount  // We get base
+				step.Volume = currentAmount
+				step.Amount = outputAmountAfterFee
 			} else {
-				step.Amount = currentAmount // We spend base
-				step.Volume = outputAmount  // We get quote
+				step.Amount = currentAmount
+				step.Volume = outputAmountAfterFee
 			}
 
 			steps = append(steps, ChainStep{
 				Type:  "trade",
 				Trade: step,
 			})
-			// Format: IRT-nobitex-USDT
 			pathParts = append(pathParts, string(edge.Exchange), edge.To)
-			currentAmount = outputAmount
+			currentAmount = outputAmountAfterFee
 		}
 	}
 
@@ -372,3 +373,5 @@ func (f *Finder) buildChainFromPath(path []Edge, finalAmount float64) *Arbitrage
 		Path:          strings.Join(pathParts, "-"),
 	}
 }
+
+

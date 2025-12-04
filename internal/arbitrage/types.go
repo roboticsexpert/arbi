@@ -11,14 +11,15 @@ type ConversionRate struct {
 
 // TradeStep represents a single step in an arbitrage chain
 type TradeStep struct {
-	Exchange  orderbook.PriceSourceName `json:"exchange"`
-	Action    string                    `json:"action"` // "buy" or "sell"
-	Base      string                    `json:"base"`
-	Quote     string                    `json:"quote"`
-	Price     float64                   `json:"price"`      // effective price after orderbook depth
-	Amount    float64                   `json:"amount"`     // amount of base currency
-	Volume    float64                   `json:"volume"`     // volume in quote currency
-	AmountOut float64                   `json:"amount_out"` // what we get after the trade
+	Exchange   orderbook.PriceSourceName `json:"exchange"`
+	Action     string                    `json:"action"` // "buy" or "sell"
+	Base       string                    `json:"base"`
+	Quote      string                    `json:"quote"`
+	Price      float64                   `json:"price"`       // effective price after orderbook depth
+	Amount     float64                   `json:"amount"`      // amount of base currency
+	Volume     float64                   `json:"volume"`      // volume in quote currency
+	FeePercent float64                   `json:"fee_percent"` // trading fee as percentage (0.1 = 0.1%)
+	AmountOut  float64                   `json:"amount_out"`  // what we get after the trade (after fee)
 }
 
 // FixedConversionStep represents a fixed rate conversion (e.g., PAXG -> GOLD18)
