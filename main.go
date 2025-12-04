@@ -19,7 +19,7 @@ import (
 	"arbi/internal/price-sources/kucoin"
 	"arbi/internal/price-sources/nobitex"
 
-	_ "arbi/docs" // swagger docs
+	"arbi/docs" // swagger docs
 
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -37,7 +37,6 @@ var ArbFinder *arbitrage.Finder
 // @version 1.0
 // @description Cryptocurrency Orderbook Aggregator API - Real-time orderbook data from multiple exchanges
 
-// @host localhost:8080
 // @BasePath /
 
 // @schemes http https
@@ -87,8 +86,8 @@ func main() {
 	// Setup Gin router
 	router := gin.Default()
 
-	// Swagger documentation
-	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	// Swagger documentation - dynamically uses request host
+	router.GET("/swagger/*any", swaggerHandler())
 
 	router.GET("/up", healthCheck)
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
@@ -239,6 +238,29 @@ func formatPrice(pl *orderbook.PriceLevel) string {
 		return "N/A"
 	}
 	return pl.Price + " @ " + pl.Quantity
+}
+
+// swaggerHandler returns a handler that dynamically sets the Swagger host based on the request
+func swaggerHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Get host from request, checking X-Forwarded-Host first (for reverse proxies)
+		host := c.Request.Header.Get("X-Forwarded-Host")
+		if host == "" {
+			host = c.Request.Host
+		}
+		if host == "" {
+			host = c.Request.Header.Get("Host")
+		}
+		if host == "" {
+			host = "localhost:8080" // fallback
+		}
+
+		// Dynamically update SwaggerInfo host
+		docs.SwaggerInfo.Host = host
+
+		// Use the standard swagger handler
+		ginSwagger.WrapHandler(swaggerFiles.Handler)(c)
+	}
 }
 
 // updateMetrics updates Prometheus metrics for an orderbook
