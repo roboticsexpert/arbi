@@ -33,7 +33,7 @@ func (s *Store) AddSource(source PriceSource) {
 	// Register callback to update central store
 	source.OnUpdate(func(ob *OrderBook) {
 		key := OrderBookKey{Exchange: name, Symbol: ob.Symbol}
-
+		
 		s.mu.Lock()
 		s.orderbooks[key] = ob
 		callbacks := s.callbacks

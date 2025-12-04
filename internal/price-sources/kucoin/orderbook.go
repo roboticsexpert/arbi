@@ -33,7 +33,7 @@ func NewSource(client *Client, symbols []string) *Source {
 		spotPublicWs: spotPublicWs,
 		orderBooks:   make(map[string]*orderbook.OrderBook),
 		callbacks:    make([]func(*orderbook.OrderBook), 0),
-	}
+}
 
 	// Auto-start if symbols provided
 	if len(symbols) > 0 {

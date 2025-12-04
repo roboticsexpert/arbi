@@ -69,3 +69,4 @@ func (c *Client) GetPrices() (*PriceResponse, error) {
 	return &priceResp, nil
 }
 
+

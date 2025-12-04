@@ -12,6 +12,7 @@ import (
 	"arbi/internal/orderbook"
 	"arbi/internal/price-sources/ecogold"
 	"arbi/internal/price-sources/kucoin"
+	"arbi/internal/price-sources/nobitex"
 
 	_ "arbi/docs" // swagger docs
 
@@ -49,13 +50,17 @@ func main() {
 	ecogoldSource := ecogold.NewSource()
 	OrderBookStore.AddSource(ecogoldSource)
 
+	// Setup Nobitex source - WebSocket orderbook for USDT/IRT
+	nobitexSource := nobitex.NewSource([]string{"USDTIRT"})
+	OrderBookStore.AddSource(nobitexSource)
+
 	// Register update callback for logging
-	OrderBookStore.OnUpdate(func(key orderbook.OrderBookKey, ob *orderbook.OrderBook) {
-		log.Printf("[%s] %s - Best Bid: %s, Best Ask: %s",
-			ob.Exchange, ob.Symbol,
-			formatPrice(ob.BestBid()),
-			formatPrice(ob.BestAsk()))
-	})
+		OrderBookStore.OnUpdate(func(key orderbook.OrderBookKey, ob *orderbook.OrderBook) {
+			log.Printf("[%s] %s - Best Bid: %s, Best Ask: %s",
+				ob.Exchange, ob.Symbol,
+				formatPrice(ob.BestBid()),
+				formatPrice(ob.BestAsk()))
+		})
 
 	// Setup Gin router
 	router := gin.Default()

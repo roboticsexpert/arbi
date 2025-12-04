@@ -143,3 +143,4 @@ func (s *Source) OnUpdate(callback func(*orderbook.OrderBook)) {
 // Ensure Source implements PriceSource interface
 var _ orderbook.PriceSource = (*Source)(nil)
 
+
