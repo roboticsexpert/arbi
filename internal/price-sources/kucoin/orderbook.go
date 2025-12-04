@@ -2,6 +2,7 @@ package kucoin
 
 import (
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,7 +34,7 @@ func NewSource(client *Client, symbols []string) *Source {
 		spotPublicWs: spotPublicWs,
 		orderBooks:   make(map[string]*orderbook.OrderBook),
 		callbacks:    make([]func(*orderbook.OrderBook), 0),
-}
+	}
 
 	// Auto-start if symbols provided
 	if len(symbols) > 0 {
@@ -55,10 +56,13 @@ func (s *Source) start(symbols []string) {
 	// Subscribe to Level50 orderbook
 	_, err := s.spotPublicWs.OrderbookLevel50(symbols, func(topic string, subject string, data *spotpublic.OrderbookLevel50Event) error {
 		symbol := extractSymbolFromTopic(topic)
+		base, quote := parseSymbol(symbol)
 
 		ob := &orderbook.OrderBook{
 			Source:    SourceName,
 			Symbol:    symbol,
+			Base:      base,
+			Quote:     quote,
 			Bids:      convertPriceLevels(data.Bids),
 			Asks:      convertPriceLevels(data.Asks),
 			Timestamp: data.Timestamp,
@@ -138,6 +142,15 @@ func convertPriceLevels(levels [][]string) []orderbook.PriceLevel {
 		}
 	}
 	return result
+}
+
+// parseSymbol extracts base and quote from symbol format like "BTC-USDT"
+func parseSymbol(symbol string) (base, quote string) {
+	parts := strings.Split(symbol, "-")
+	if len(parts) == 2 {
+		return parts[0], parts[1]
+	}
+	return symbol, ""
 }
 
 // Ensure Source implements PriceSource interface

@@ -54,9 +54,12 @@ func (s *Source) subscribeSymbol(symbol string) {
 	binanceSymbol := convertToBinanceSymbol(symbol)
 
 	wsDepthHandler := func(event *binance.WsPartialDepthEvent) {
+		base, quote := parseSymbol(symbol)
 		ob := &orderbook.OrderBook{
 			Source:    SourceName,
 			Symbol:    symbol, // Keep original format for consistency
+			Base:      base,
+			Quote:     quote,
 			Bids:      convertBids(event.Bids),
 			Asks:      convertAsks(event.Asks),
 			Timestamp: event.LastUpdateID,
@@ -138,6 +141,15 @@ func (s *Source) Stop() {
 // convertToBinanceSymbol converts symbol format from BTC-USDT to BTCUSDT
 func convertToBinanceSymbol(symbol string) string {
 	return strings.ReplaceAll(symbol, "-", "")
+}
+
+// parseSymbol extracts base and quote from symbol format like "BTC-USDT"
+func parseSymbol(symbol string) (base, quote string) {
+	parts := strings.Split(symbol, "-")
+	if len(parts) == 2 {
+		return parts[0], parts[1]
+	}
+	return symbol, ""
 }
 
 func convertBids(bids []binance.Bid) []orderbook.PriceLevel {

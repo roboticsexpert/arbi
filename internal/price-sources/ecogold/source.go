@@ -2,6 +2,7 @@ package ecogold
 
 import (
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -89,9 +90,13 @@ func (s *Source) convertToOrderBook(price PriceData) *orderbook.OrderBook {
 	// - sell_price = price at which exchange sells to you = ASK (you buy at this price)
 	// - buy_price = price at which exchange buys from you = BID (you sell at this price)
 
+	base, quote := parseSymbol(price.Symbol)
+
 	return &orderbook.OrderBook{
 		Source: orderbook.PriceSourceEcoGold,
 		Symbol: price.Symbol,
+		Base:   base,
+		Quote:  quote,
 		Bids: []orderbook.PriceLevel{
 			{
 				Price:    price.BuyPrice,
@@ -107,6 +112,15 @@ func (s *Source) convertToOrderBook(price PriceData) *orderbook.OrderBook {
 		Timestamp: time.Now().UnixMilli(),
 		UpdatedAt: time.Now(),
 	}
+}
+
+// parseSymbol extracts base and quote from symbol format like "USDT-IRT"
+func parseSymbol(symbol string) (base, quote string) {
+	parts := strings.Split(symbol, "-")
+	if len(parts) == 2 {
+		return parts[0], parts[1]
+	}
+	return symbol, ""
 }
 
 // Name returns the exchange name

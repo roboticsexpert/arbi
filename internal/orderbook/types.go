@@ -12,6 +12,8 @@ type PriceLevel struct {
 type OrderBook struct {
 	Source    PriceSourceName `json:"source"`
 	Symbol    string          `json:"symbol"`
+	Base      string          `json:"base"`
+	Quote     string          `json:"quote"`
 	Bids      []PriceLevel    `json:"bids"`
 	Asks      []PriceLevel    `json:"asks"`
 	Timestamp int64           `json:"timestamp"`

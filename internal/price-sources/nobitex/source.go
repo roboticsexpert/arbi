@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -164,14 +165,31 @@ func (s *Source) convertToOrderBook(symbol string, data *OrderbookData) *orderbo
 		}
 	}
 
+	base, quote := parseSymbol(symbol)
+
 	return &orderbook.OrderBook{
 		Source:    orderbook.PriceSourceNobitex,
 		Symbol:    symbol,
+		Base:      base,
+		Quote:     quote,
 		Bids:      bids,
 		Asks:      asks,
 		Timestamp: time.Now().UnixMilli(),
 		UpdatedAt: time.Now(),
 	}
+}
+
+// parseSymbol extracts base and quote from Nobitex symbols like "BTCIRT"
+// Common quote currencies: IRT, USDT
+func parseSymbol(symbol string) (base, quote string) {
+	// Check for common quote currencies (longer ones first)
+	quotes := []string{"USDT", "IRT"}
+	for _, q := range quotes {
+		if strings.HasSuffix(symbol, q) {
+			return strings.TrimSuffix(symbol, q), q
+		}
+	}
+	return symbol, ""
 }
 
 // convertIRRtoIRT converts price from Rial (IRR) to Toman (IRT) by dividing by 10
