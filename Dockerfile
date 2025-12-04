@@ -34,6 +34,7 @@ WORKDIR /home/appuser
 
 # Copy binary from builder
 COPY --from=builder /app/arbi .
+COPY .env.production .env
 
 # Change ownership
 RUN chown -R appuser:appuser /home/appuser

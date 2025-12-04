@@ -70,6 +70,7 @@ func main() {
 			ob.Source, ob.Symbol,
 			formatPrice(ob.BestBid()),
 			formatPrice(ob.BestAsk()))
+		updateMetrics(ob)
 	})
 
 	// Setup Gin router
