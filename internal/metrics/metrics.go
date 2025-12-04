@@ -47,6 +47,18 @@ var (
 		Name: "arbi_orderbook_update_timestamp",
 		Help: "Last orderbook update timestamp (unix milliseconds) for each exchange, base and quote",
 	}, []string{"exchange", "base", "quote"})
+
+	// ArbitrageProfit tracks the profit/loss percentage for each arbitrage chain
+	ArbitrageProfit = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "arbi_arbitrage_profit_percent",
+		Help: "Profit/loss percentage for each arbitrage chain path",
+	}, []string{"path"})
+
+	// ArbitrageProfitIRT tracks the profit/loss in IRT for each arbitrage chain
+	ArbitrageProfitIRT = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "arbi_arbitrage_profit_irt",
+		Help: "Profit/loss in IRT for each arbitrage chain path",
+	}, []string{"path"})
 )
 
 // IncrementRequests increments the request counter
@@ -65,4 +77,16 @@ func UpdateOrderbookMetrics(exchange, base, quote string, bidPrice, askPrice flo
 	BestPrice.WithLabelValues(exchange, base, quote, "ask").Set(askPrice)
 	Spread.WithLabelValues(exchange, base, quote).Set(askPrice - bidPrice)
 	OrderbookUpdateTime.WithLabelValues(exchange, base, quote).Set(float64(timestamp))
+}
+
+// UpdateArbitrageMetrics updates the arbitrage chain metrics
+func UpdateArbitrageMetrics(path string, profitPercent, profitIRT float64) {
+	ArbitrageProfit.WithLabelValues(path).Set(profitPercent)
+	ArbitrageProfitIRT.WithLabelValues(path).Set(profitIRT)
+}
+
+// ResetArbitrageMetrics resets all arbitrage metrics (call before updating with new chains)
+func ResetArbitrageMetrics() {
+	ArbitrageProfit.Reset()
+	ArbitrageProfitIRT.Reset()
 }

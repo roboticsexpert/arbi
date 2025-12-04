@@ -6,9 +6,11 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"strconv"
 
+	"arbi/internal/arbitrage"
 	"arbi/internal/config"
 	"arbi/internal/metrics"
 	"arbi/internal/orderbook"
@@ -27,6 +29,9 @@ import (
 
 // Global orderbook store - accessible from anywhere
 var OrderBookStore *orderbook.Store
+
+// Global arbitrage finder
+var ArbFinder *arbitrage.Finder
 
 // @title Arbi API
 // @version 1.0
@@ -68,12 +73,16 @@ func main() {
 	OrderBookStore.AddSource(nobitexSource)
 
 	OrderBookStore.OnUpdate(func(key orderbook.OrderBookKey, ob *orderbook.OrderBook) {
-		log.Printf("[%s] %s - Best Bid: %s, Best Ask: %s",
-			ob.Source, ob.Pair(),
-			formatPrice(ob.BestBid()),
-			formatPrice(ob.BestAsk()))
+		// log.Printf("[%s] %s - Best Bid: %s, Best Ask: %s",
+		// 	ob.Source, ob.Pair(),
+		// 	formatPrice(ob.BestBid()),
+		// 	formatPrice(ob.BestAsk()))
 		updateMetrics(ob)
 	})
+
+	// Start arbitrage finder - runs every 10 seconds with 100 million IRT
+	ArbFinder = arbitrage.NewFinder(OrderBookStore, 100_000_000)
+	go ArbFinder.Start(10 * time.Second)
 
 	// Setup Gin router
 	router := gin.Default()
@@ -87,6 +96,7 @@ func main() {
 	router.GET("/orderbooks/:source", getOrderbooksBySource)
 	router.GET("/orderbooks/:source/:base/:quote", getOrderbook)
 	router.GET("/stats", getStats)
+	router.GET("/arbitrage", getArbitrageChains)
 
 	// Graceful shutdown
 	go func() {
@@ -174,6 +184,21 @@ func getOrderbook(c *gin.Context) {
 // @Router /stats [get]
 func getStats(c *gin.Context) {
 	c.JSON(200, OrderBookStore.Stats())
+}
+
+// getArbitrageChains godoc
+// @Summary Get arbitrage chains
+// @Description Returns the latest calculated arbitrage opportunities
+// @Tags Arbitrage
+// @Produce json
+// @Success 200 {array} arbitrage.ArbitrageChain
+// @Router /arbitrage [get]
+func getArbitrageChains(c *gin.Context) {
+	chains := ArbFinder.GetLastChains()
+	c.JSON(200, gin.H{
+		"count":  len(chains),
+		"chains": chains,
+	})
 }
 
 // getKucoinPairs parses KUCOIN_DEFAULT_SYMBOLS env var (format: "BTC-USDT,ETH-USDT")
