@@ -8,6 +8,11 @@ import (
 )
 
 func main() {
+	// Initialize KuCoin client
+	kucoinClient = kucoin.NewClient()
+	orderBookService = kucoin.NewOrderBookService(kucoinClient)
+
+	// Setup Gin router
 	router := gin.Default()
 
 	router.GET("/up", func(c *gin.Context) {
