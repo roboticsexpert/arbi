@@ -7,8 +7,10 @@ import (
 	"strings"
 	"syscall"
 
+	"strconv"
+
 	"arbi/internal/config"
-	_ "arbi/internal/metrics"
+	"arbi/internal/metrics"
 	"arbi/internal/orderbook"
 	"arbi/internal/price-sources/ecogold"
 	"arbi/internal/price-sources/kucoin"
@@ -54,13 +56,16 @@ func main() {
 	nobitexSource := nobitex.NewSource([]string{"USDTIRT"})
 	OrderBookStore.AddSource(nobitexSource)
 
-	// Register update callback for logging
-		OrderBookStore.OnUpdate(func(key orderbook.OrderBookKey, ob *orderbook.OrderBook) {
-			log.Printf("[%s] %s - Best Bid: %s, Best Ask: %s",
-				ob.Exchange, ob.Symbol,
-				formatPrice(ob.BestBid()),
-				formatPrice(ob.BestAsk()))
-		})
+	// Register update callback for logging and metrics
+	OrderBookStore.OnUpdate(func(key orderbook.OrderBookKey, ob *orderbook.OrderBook) {
+		log.Printf("[%s] %s - Best Bid: %s, Best Ask: %s",
+			ob.Exchange, ob.Symbol,
+			formatPrice(ob.BestBid()),
+			formatPrice(ob.BestAsk()))
+
+		// Update Prometheus metrics
+		updateMetrics(ob)
+	})
 
 	// Setup Gin router
 	router := gin.Default()
@@ -174,4 +179,25 @@ func formatPrice(pl *orderbook.PriceLevel) string {
 		return "N/A"
 	}
 	return pl.Price + " @ " + pl.Quantity
+}
+
+// updateMetrics updates Prometheus metrics for an orderbook
+func updateMetrics(ob *orderbook.OrderBook) {
+	var bidPrice, askPrice float64
+
+	if bestBid := ob.BestBid(); bestBid != nil {
+		bidPrice, _ = strconv.ParseFloat(bestBid.Price, 64)
+	}
+
+	if bestAsk := ob.BestAsk(); bestAsk != nil {
+		askPrice, _ = strconv.ParseFloat(bestAsk.Price, 64)
+	}
+
+	metrics.UpdateOrderbookMetrics(
+		ob.Exchange,
+		ob.Symbol,
+		bidPrice,
+		askPrice,
+		ob.Timestamp,
+	)
 }
