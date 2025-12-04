@@ -13,8 +13,8 @@ COPY go.mod go.sum ./
 # Download dependencies
 RUN go mod download
 
-# Copy source code
-COPY *.go ./
+# Copy all source code
+COPY . .
 
 # Build the application
 # CGO_ENABLED=0 for static binary
@@ -41,7 +41,7 @@ RUN chown -R appuser:appuser /home/appuser
 # Switch to non-root user
 USER appuser
 
-# Expose any ports if needed (not required for this app)
+# Expose port
 EXPOSE 8080
 
 # Set environment variables (can be overridden at runtime)
@@ -49,4 +49,3 @@ ENV PROXY_URL=""
 
 # Run the application
 CMD ["./arbi"]
-
