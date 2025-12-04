@@ -1,54 +1,51 @@
 package kucoin
 
 import (
+	"context"
 	"fmt"
 	"sync"
+	"time"
+
+	"arbi/internal/orderbook"
 
 	"github.com/Kucoin/kucoin-universal-sdk/sdk/golang/pkg/common/logger"
 	"github.com/Kucoin/kucoin-universal-sdk/sdk/golang/pkg/generate/spot/spotpublic"
 )
 
-// PriceLevel represents a single price level in the order book
-type PriceLevel struct {
-	Price    string `json:"price"`
-	Quantity string `json:"quantity"`
-}
+const ExchangeName = "kucoin"
 
-// OrderBook represents the current state of an order book
-type OrderBook struct {
-	Symbol    string       `json:"symbol"`
-	Bids      []PriceLevel `json:"bids"`
-	Asks      []PriceLevel `json:"asks"`
-	Timestamp int64        `json:"timestamp"`
-}
-
-// OrderBookService manages WebSocket connections for order book data
-type OrderBookService struct {
+// Source implements the orderbook.PriceSource interface for KuCoin
+type Source struct {
 	client        *Client
 	spotPublicWs  spotpublic.SpotPublicWS
 	subscriptions map[string]string // symbol -> subscription ID
-	orderBooks    map[string]*OrderBook
-	callbacks     map[string][]func(*OrderBook)
+	orderBooks    map[string]*orderbook.OrderBook
+	callbacks     map[string][]func(*orderbook.OrderBook)
 	mu            sync.RWMutex
 	started       bool
 }
 
-// NewOrderBookService creates a new order book service
-func NewOrderBookService(client *Client) *OrderBookService {
+// NewSource creates a new KuCoin price source
+func NewSource(client *Client) *Source {
 	wsService := client.GetAPIClient().WsService()
 	spotPublicWs := wsService.NewSpotPublicWS()
 
-	return &OrderBookService{
+	return &Source{
 		client:        client,
 		spotPublicWs:  spotPublicWs,
 		subscriptions: make(map[string]string),
-		orderBooks:    make(map[string]*OrderBook),
-		callbacks:     make(map[string][]func(*OrderBook)),
+		orderBooks:    make(map[string]*orderbook.OrderBook),
+		callbacks:     make(map[string][]func(*orderbook.OrderBook)),
 	}
 }
 
+// Name returns the exchange name
+func (s *Source) Name() string {
+	return ExchangeName
+}
+
 // Start starts the WebSocket connection
-func (s *OrderBookService) Start() error {
+func (s *Source) Start() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -67,7 +64,7 @@ func (s *OrderBookService) Start() error {
 }
 
 // Stop stops the WebSocket connection
-func (s *OrderBookService) Stop() error {
+func (s *Source) Stop() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -86,9 +83,20 @@ func (s *OrderBookService) Stop() error {
 	return nil
 }
 
+// IsRunning returns true if the WebSocket is connected
+func (s *Source) IsRunning() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.started
+}
+
+// Subscribe subscribes to orderbook updates for the given symbols
+func (s *Source) Subscribe(ctx context.Context, symbols []string, callback func(*orderbook.OrderBook)) error {
+	return s.SubscribeLevel5(symbols, callback)
+}
+
 // SubscribeLevel5 subscribes to Level 5 order book updates (top 5 bids/asks)
-// This is the most commonly used level for trading applications
-func (s *OrderBookService) SubscribeLevel5(symbols []string, callback func(*OrderBook)) error {
+func (s *Source) SubscribeLevel5(symbols []string, callback func(*orderbook.OrderBook)) error {
 	if err := s.Start(); err != nil {
 		return err
 	}
@@ -100,24 +108,24 @@ func (s *OrderBookService) SubscribeLevel5(symbols []string, callback func(*Orde
 	s.mu.Unlock()
 
 	subId, err := s.spotPublicWs.OrderbookLevel5(symbols, func(topic string, subject string, data *spotpublic.OrderbookLevel5Event) error {
-		// Extract symbol from topic (format: /spotMarket/level2Depth5:BTC-USDT)
 		symbol := extractSymbolFromTopic(topic)
 
-		orderBook := &OrderBook{
+		ob := &orderbook.OrderBook{
+			Exchange:  ExchangeName,
 			Symbol:    symbol,
 			Bids:      convertPriceLevels(data.Bids),
 			Asks:      convertPriceLevels(data.Asks),
 			Timestamp: data.Timestamp,
+			UpdatedAt: time.Now(),
 		}
 
 		s.mu.Lock()
-		s.orderBooks[symbol] = orderBook
+		s.orderBooks[symbol] = ob
 		callbacks := s.callbacks[symbol]
 		s.mu.Unlock()
 
-		// Call all registered callbacks
 		for _, cb := range callbacks {
-			cb(orderBook)
+			cb(ob)
 		}
 
 		return nil
@@ -138,7 +146,7 @@ func (s *OrderBookService) SubscribeLevel5(symbols []string, callback func(*Orde
 }
 
 // SubscribeLevel50 subscribes to Level 50 order book updates (top 50 bids/asks)
-func (s *OrderBookService) SubscribeLevel50(symbols []string, callback func(*OrderBook)) error {
+func (s *Source) SubscribeLevel50(symbols []string, callback func(*orderbook.OrderBook)) error {
 	if err := s.Start(); err != nil {
 		return err
 	}
@@ -152,20 +160,22 @@ func (s *OrderBookService) SubscribeLevel50(symbols []string, callback func(*Ord
 	subId, err := s.spotPublicWs.OrderbookLevel50(symbols, func(topic string, subject string, data *spotpublic.OrderbookLevel50Event) error {
 		symbol := extractSymbolFromTopic(topic)
 
-		orderBook := &OrderBook{
+		ob := &orderbook.OrderBook{
+			Exchange:  ExchangeName,
 			Symbol:    symbol,
 			Bids:      convertPriceLevels(data.Bids),
 			Asks:      convertPriceLevels(data.Asks),
 			Timestamp: data.Timestamp,
+			UpdatedAt: time.Now(),
 		}
 
 		s.mu.Lock()
-		s.orderBooks[symbol] = orderBook
+		s.orderBooks[symbol] = ob
 		callbacks := s.callbacks[symbol]
 		s.mu.Unlock()
 
 		for _, cb := range callbacks {
-			cb(orderBook)
+			cb(ob)
 		}
 
 		return nil
@@ -185,54 +195,30 @@ func (s *OrderBookService) SubscribeLevel50(symbols []string, callback func(*Ord
 	return nil
 }
 
-// SubscribeIncrement subscribes to incremental order book updates
-func (s *OrderBookService) SubscribeIncrement(symbols []string, callback func(*OrderBookIncrement)) error {
-	if err := s.Start(); err != nil {
-		return err
-	}
-
-	subId, err := s.spotPublicWs.OrderbookIncrement(symbols, func(topic string, subject string, data *spotpublic.OrderbookIncrementEvent) error {
-		symbol := extractSymbolFromTopic(topic)
-
-		increment := &OrderBookIncrement{
-			Symbol:        symbol,
-			SequenceStart: data.SequenceStart,
-			SequenceEnd:   data.SequenceEnd,
-			Time:          data.Time,
-			Changes: OrderBookChanges{
-				Asks: convertIncrementLevels(data.Changes.Asks),
-				Bids: convertIncrementLevels(data.Changes.Bids),
-			},
-		}
-
-		callback(increment)
-		return nil
-	})
-
-	if err != nil {
-		return fmt.Errorf("failed to subscribe to increment order book: %w", err)
-	}
-
-	s.mu.Lock()
-	for _, symbol := range symbols {
-		s.subscriptions[symbol+"_increment"] = subId
-	}
-	s.mu.Unlock()
-
-	logger.GetLogger().Infof("Subscribed to incremental order book for %v", symbols)
-	return nil
-}
-
 // Unsubscribe unsubscribes from order book updates for a symbol
-func (s *OrderBookService) Unsubscribe(symbol string, level string) error {
+func (s *Source) Unsubscribe(symbol string) error {
 	s.mu.Lock()
-	key := symbol + "_" + level
-	subId, exists := s.subscriptions[key]
-	if !exists {
-		s.mu.Unlock()
-		return fmt.Errorf("no subscription found for %s at %s level", symbol, level)
+
+	// Try to unsubscribe from all levels
+	var subId string
+	var key string
+	for _, level := range []string{"level5", "level50", "increment"} {
+		k := symbol + "_" + level
+		if id, exists := s.subscriptions[k]; exists {
+			subId = id
+			key = k
+			break
+		}
 	}
+
+	if subId == "" {
+		s.mu.Unlock()
+		return fmt.Errorf("no subscription found for %s", symbol)
+	}
+
 	delete(s.subscriptions, key)
+	delete(s.callbacks, symbol)
+	delete(s.orderBooks, symbol)
 	s.mu.Unlock()
 
 	err := s.spotPublicWs.UnSubscribe(subId)
@@ -240,55 +226,32 @@ func (s *OrderBookService) Unsubscribe(symbol string, level string) error {
 		return fmt.Errorf("failed to unsubscribe: %w", err)
 	}
 
-	logger.GetLogger().Infof("Unsubscribed from %s order book for %s", level, symbol)
+	logger.GetLogger().Infof("Unsubscribed from order book for %s", symbol)
 	return nil
 }
 
 // GetOrderBook returns the latest order book for a symbol
-func (s *OrderBookService) GetOrderBook(symbol string) *OrderBook {
+func (s *Source) GetOrderBook(symbol string) *orderbook.OrderBook {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.orderBooks[symbol]
 }
 
 // GetAllOrderBooks returns all current order books
-func (s *OrderBookService) GetAllOrderBooks() map[string]*OrderBook {
+func (s *Source) GetAllOrderBooks() map[string]*orderbook.OrderBook {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	result := make(map[string]*OrderBook)
+	result := make(map[string]*orderbook.OrderBook)
 	for k, v := range s.orderBooks {
 		result[k] = v
 	}
 	return result
 }
 
-// OrderBookIncrement represents an incremental order book update
-type OrderBookIncrement struct {
-	Symbol        string           `json:"symbol"`
-	SequenceStart int64            `json:"sequenceStart"`
-	SequenceEnd   int64            `json:"sequenceEnd"`
-	Time          int64            `json:"time"`
-	Changes       OrderBookChanges `json:"changes"`
-}
-
-// OrderBookChanges represents the changes in an incremental update
-type OrderBookChanges struct {
-	Asks []IncrementLevel `json:"asks"`
-	Bids []IncrementLevel `json:"bids"`
-}
-
-// IncrementLevel represents a single increment update
-type IncrementLevel struct {
-	Price    string `json:"price"`
-	Size     string `json:"size"`
-	Sequence string `json:"sequence"`
-}
-
 // Helper functions
 
 func extractSymbolFromTopic(topic string) string {
-	// Topic format: /spotMarket/level2Depth5:BTC-USDT or /market/level2:BTC-USDT
 	for i := len(topic) - 1; i >= 0; i-- {
 		if topic[i] == ':' {
 			return topic[i+1:]
@@ -297,11 +260,11 @@ func extractSymbolFromTopic(topic string) string {
 	return topic
 }
 
-func convertPriceLevels(levels [][]string) []PriceLevel {
-	result := make([]PriceLevel, len(levels))
+func convertPriceLevels(levels [][]string) []orderbook.PriceLevel {
+	result := make([]orderbook.PriceLevel, len(levels))
 	for i, level := range levels {
 		if len(level) >= 2 {
-			result[i] = PriceLevel{
+			result[i] = orderbook.PriceLevel{
 				Price:    level[0],
 				Quantity: level[1],
 			}
@@ -310,16 +273,5 @@ func convertPriceLevels(levels [][]string) []PriceLevel {
 	return result
 }
 
-func convertIncrementLevels(levels [][]string) []IncrementLevel {
-	result := make([]IncrementLevel, len(levels))
-	for i, level := range levels {
-		if len(level) >= 3 {
-			result[i] = IncrementLevel{
-				Price:    level[0],
-				Size:     level[1],
-				Sequence: level[2],
-			}
-		}
-	}
-	return result
-}
+// Ensure Source implements PriceSource interface
+var _ orderbook.PriceSource = (*Source)(nil)
