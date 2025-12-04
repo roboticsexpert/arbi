@@ -1,15 +1,26 @@
 package orderbook
 
+// TradingPair represents a trading pair with base and quote currencies
+type TradingPair struct {
+	Base  string
+	Quote string
+}
+
+// String returns the string representation of the trading pair (e.g., "BTC-USDT")
+func (p TradingPair) String() string {
+	return p.Base + "-" + p.Quote
+}
+
 // PriceSource defines the interface that all exchange implementations must satisfy
 // Sources automatically connect and stay up, streaming orderbook data continuously
 type PriceSource interface {
 	// Name returns the price source name
 	Name() PriceSourceName
 
-	// GetOrderBook returns the latest orderbook for a symbol
-	GetOrderBook(symbol string) *OrderBook
+	// GetOrderBook returns the latest orderbook for a trading pair
+	GetOrderBook(base, quote string) *OrderBook
 
-	// GetAllOrderBooks returns all orderbooks for this source
+	// GetAllOrderBooks returns all orderbooks for this source (key is "base-quote")
 	GetAllOrderBooks() map[string]*OrderBook
 
 	// OnUpdate registers a callback for orderbook updates
@@ -18,8 +29,8 @@ type PriceSource interface {
 
 // SourceConfig holds configuration for price sources
 type SourceConfig struct {
-	// Symbols to stream orderbook data for
-	Symbols []string
+	// Pairs to stream orderbook data for
+	Pairs []TradingPair
 
 	// ProxyURL for connections (optional)
 	ProxyURL string

@@ -19,7 +19,7 @@ const (
 // It polls the REST API every 30 seconds and converts OTC prices to orderbook format
 type Source struct {
 	client     *Client
-	orderBooks map[string]*orderbook.OrderBook
+	orderBooks map[string]*orderbook.OrderBook // key: "base-quote"
 	callbacks  []func(*orderbook.OrderBook)
 	mu         sync.RWMutex
 	stopCh     chan struct{}
@@ -69,9 +69,10 @@ func (s *Source) fetchAndUpdate() {
 
 	for _, price := range prices.Data {
 		ob := s.convertToOrderBook(price)
+		pairKey := ob.Base + "-" + ob.Quote
 
 		s.mu.Lock()
-		s.orderBooks[price.Symbol] = ob
+		s.orderBooks[pairKey] = ob
 		callbacks := s.callbacks
 		s.mu.Unlock()
 
@@ -94,7 +95,6 @@ func (s *Source) convertToOrderBook(price PriceData) *orderbook.OrderBook {
 
 	return &orderbook.OrderBook{
 		Source: orderbook.PriceSourceEcoGold,
-		Symbol: price.Symbol,
 		Base:   base,
 		Quote:  quote,
 		Bids: []orderbook.PriceLevel{
@@ -128,11 +128,11 @@ func (s *Source) Name() orderbook.PriceSourceName {
 	return orderbook.PriceSourceEcoGold
 }
 
-// GetOrderBook returns the latest orderbook for a symbol
-func (s *Source) GetOrderBook(symbol string) *orderbook.OrderBook {
+// GetOrderBook returns the latest orderbook for a trading pair
+func (s *Source) GetOrderBook(base, quote string) *orderbook.OrderBook {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.orderBooks[symbol]
+	return s.orderBooks[base+"-"+quote]
 }
 
 // GetAllOrderBooks returns all current orderbooks

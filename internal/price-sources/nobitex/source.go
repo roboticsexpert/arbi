@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -29,21 +28,22 @@ type OrderbookData struct {
 type Source struct {
 	client       *centrifuge.Client
 	subscription *centrifuge.Subscription
-	orderBooks   map[string]*orderbook.OrderBook
+	orderBooks   map[string]*orderbook.OrderBook // key: "base-quote"
 	callbacks    []func(*orderbook.OrderBook)
 	mu           sync.RWMutex
-	symbols      []string
+	pairs        []orderbook.TradingPair
 }
 
 // NewSource creates a new Nobitex price source and automatically connects
-func NewSource(symbols []string) *Source {
+// pairs format: []orderbook.TradingPair{{Base: "USDT", Quote: "IRT"}, ...}
+func NewSource(pairs []orderbook.TradingPair) *Source {
 	s := &Source{
 		orderBooks: make(map[string]*orderbook.OrderBook),
 		callbacks:  make([]func(*orderbook.OrderBook), 0),
-		symbols:    symbols,
+		pairs:      pairs,
 	}
 
-	if len(symbols) > 0 {
+	if len(pairs) > 0 {
 		go s.connect()
 	}
 
@@ -73,10 +73,10 @@ func (s *Source) connect() {
 		log.Printf("[Nobitex] Error: %v", e.Error)
 	})
 
-	// Subscribe to each symbol
-	for _, symbol := range s.symbols {
-		if err := s.subscribeToSymbol(symbol); err != nil {
-			log.Printf("[Nobitex] Failed to subscribe to %s: %v", symbol, err)
+	// Subscribe to each pair
+	for _, pair := range s.pairs {
+		if err := s.subscribeToPair(pair); err != nil {
+			log.Printf("[Nobitex] Failed to subscribe to %s: %v", pair.String(), err)
 		}
 	}
 
@@ -89,9 +89,12 @@ func (s *Source) connect() {
 	}
 }
 
-// subscribeToSymbol subscribes to a single symbol's orderbook
-func (s *Source) subscribeToSymbol(symbol string) error {
-	channelName := fmt.Sprintf("public:orderbook-%s", symbol)
+// subscribeToPair subscribes to a single trading pair's orderbook
+func (s *Source) subscribeToPair(pair orderbook.TradingPair) error {
+	// Nobitex uses format like "USDTIRT" (no separator)
+	nobitexSymbol := pair.Base + pair.Quote
+	channelName := fmt.Sprintf("public:orderbook-%s", nobitexSymbol)
+	pairKey := pair.String()
 	log.Printf("[Nobitex] Subscribing to channel: %s", channelName)
 
 	sub, err := s.client.NewSubscription(channelName)
@@ -123,10 +126,10 @@ func (s *Source) subscribeToSymbol(symbol string) error {
 			return
 		}
 
-		ob := s.convertToOrderBook(symbol, &data)
+		ob := s.convertToOrderBook(pair, &data)
 
 		s.mu.Lock()
-		s.orderBooks[symbol] = ob
+		s.orderBooks[pairKey] = ob
 		callbacks := s.callbacks
 		s.mu.Unlock()
 
@@ -144,7 +147,7 @@ func (s *Source) subscribeToSymbol(symbol string) error {
 
 // convertToOrderBook converts Nobitex data to orderbook format
 // Note: Nobitex prices are in IRR (Rial), we convert to IRT (Toman) by dividing by 10
-func (s *Source) convertToOrderBook(symbol string, data *OrderbookData) *orderbook.OrderBook {
+func (s *Source) convertToOrderBook(pair orderbook.TradingPair, data *OrderbookData) *orderbook.OrderBook {
 	bids := make([]orderbook.PriceLevel, 0, len(data.Bids))
 	for _, bid := range data.Bids {
 		if len(bid) >= 2 {
@@ -165,31 +168,15 @@ func (s *Source) convertToOrderBook(symbol string, data *OrderbookData) *orderbo
 		}
 	}
 
-	base, quote := parseSymbol(symbol)
-
 	return &orderbook.OrderBook{
 		Source:    orderbook.PriceSourceNobitex,
-		Symbol:    symbol,
-		Base:      base,
-		Quote:     quote,
+		Base:      pair.Base,
+		Quote:     pair.Quote,
 		Bids:      bids,
 		Asks:      asks,
 		Timestamp: time.Now().UnixMilli(),
 		UpdatedAt: time.Now(),
 	}
-}
-
-// parseSymbol extracts base and quote from Nobitex symbols like "BTCIRT"
-// Common quote currencies: IRT, USDT
-func parseSymbol(symbol string) (base, quote string) {
-	// Check for common quote currencies (longer ones first)
-	quotes := []string{"USDT", "IRT"}
-	for _, q := range quotes {
-		if strings.HasSuffix(symbol, q) {
-			return strings.TrimSuffix(symbol, q), q
-		}
-	}
-	return symbol, ""
 }
 
 // convertIRRtoIRT converts price from Rial (IRR) to Toman (IRT) by dividing by 10
@@ -212,11 +199,11 @@ func (s *Source) Name() orderbook.PriceSourceName {
 	return orderbook.PriceSourceNobitex
 }
 
-// GetOrderBook returns the latest orderbook for a symbol
-func (s *Source) GetOrderBook(symbol string) *orderbook.OrderBook {
+// GetOrderBook returns the latest orderbook for a trading pair
+func (s *Source) GetOrderBook(base, quote string) *orderbook.OrderBook {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.orderBooks[symbol]
+	return s.orderBooks[base+"-"+quote]
 }
 
 // GetAllOrderBooks returns all current orderbooks

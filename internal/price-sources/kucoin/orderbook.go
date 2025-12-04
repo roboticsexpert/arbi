@@ -18,14 +18,15 @@ const SourceName = orderbook.PriceSourceKucoin
 type Source struct {
 	client       *Client
 	spotPublicWs spotpublic.SpotPublicWS
-	orderBooks   map[string]*orderbook.OrderBook
+	orderBooks   map[string]*orderbook.OrderBook // key: "base-quote"
 	callbacks    []func(*orderbook.OrderBook)
 	mu           sync.RWMutex
 }
 
 // NewSource creates a new KuCoin price source and automatically starts streaming
-// orderbook data for the given symbols (50-level depth by default)
-func NewSource(client *Client, symbols []string) *Source {
+// orderbook data for the given pairs (50-level depth by default)
+// pairs format: []orderbook.TradingPair{{Base: "BTC", Quote: "USDT"}, ...}
+func NewSource(client *Client, pairs []orderbook.TradingPair) *Source {
 	wsService := client.GetAPIClient().WsService()
 	spotPublicWs := wsService.NewSpotPublicWS()
 
@@ -36,16 +37,16 @@ func NewSource(client *Client, symbols []string) *Source {
 		callbacks:    make([]func(*orderbook.OrderBook), 0),
 	}
 
-	// Auto-start if symbols provided
-	if len(symbols) > 0 {
-		go s.start(symbols)
+	// Auto-start if pairs provided
+	if len(pairs) > 0 {
+		go s.start(pairs)
 	}
 
 	return s
 }
 
 // start initializes the WebSocket and subscribes to 50-level orderbook
-func (s *Source) start(symbols []string) {
+func (s *Source) start(pairs []orderbook.TradingPair) {
 	// Start WebSocket connection
 	if err := s.spotPublicWs.Start(); err != nil {
 		log.Printf("[KuCoin] Failed to start WebSocket: %v", err)
@@ -53,14 +54,20 @@ func (s *Source) start(symbols []string) {
 	}
 	log.Println("[KuCoin] WebSocket connected")
 
+	// Convert pairs to KuCoin symbol format (BTC-USDT)
+	symbols := make([]string, len(pairs))
+	for i, p := range pairs {
+		symbols[i] = p.Base + "-" + p.Quote
+	}
+
 	// Subscribe to Level50 orderbook
 	_, err := s.spotPublicWs.OrderbookLevel50(symbols, func(topic string, subject string, data *spotpublic.OrderbookLevel50Event) error {
 		symbol := extractSymbolFromTopic(topic)
 		base, quote := parseSymbol(symbol)
+		pairKey := base + "-" + quote
 
 		ob := &orderbook.OrderBook{
 			Source:    SourceName,
-			Symbol:    symbol,
 			Base:      base,
 			Quote:     quote,
 			Bids:      convertPriceLevels(data.Bids),
@@ -70,7 +77,7 @@ func (s *Source) start(symbols []string) {
 		}
 
 		s.mu.Lock()
-		s.orderBooks[symbol] = ob
+		s.orderBooks[pairKey] = ob
 		callbacks := s.callbacks
 		s.mu.Unlock()
 
@@ -94,11 +101,11 @@ func (s *Source) Name() orderbook.PriceSourceName {
 	return SourceName
 }
 
-// GetOrderBook returns the latest orderbook for a symbol
-func (s *Source) GetOrderBook(symbol string) *orderbook.OrderBook {
+// GetOrderBook returns the latest orderbook for a trading pair
+func (s *Source) GetOrderBook(base, quote string) *orderbook.OrderBook {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.orderBooks[symbol]
+	return s.orderBooks[base+"-"+quote]
 }
 
 // GetAllOrderBooks returns all current orderbooks

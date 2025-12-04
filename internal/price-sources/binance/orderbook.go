@@ -2,7 +2,6 @@ package binance
 
 import (
 	"log"
-	"strings"
 	"sync"
 	"time"
 
@@ -17,15 +16,16 @@ const SourceName = orderbook.PriceSourceBinance
 // It automatically connects and streams orderbook data
 type Source struct {
 	client     *Client
-	orderBooks map[string]*orderbook.OrderBook
+	orderBooks map[string]*orderbook.OrderBook // key: "base-quote"
 	callbacks  []func(*orderbook.OrderBook)
 	stopChans  []chan struct{}
 	mu         sync.RWMutex
 }
 
 // NewSource creates a new Binance price source and automatically starts streaming
-// orderbook data for the given symbols (20-level depth by default)
-func NewSource(client *Client, symbols []string) *Source {
+// orderbook data for the given pairs (20-level depth by default)
+// pairs format: []orderbook.TradingPair{{Base: "BTC", Quote: "USDT"}, ...}
+func NewSource(client *Client, pairs []orderbook.TradingPair) *Source {
 	s := &Source{
 		client:     client,
 		orderBooks: make(map[string]*orderbook.OrderBook),
@@ -33,33 +33,32 @@ func NewSource(client *Client, symbols []string) *Source {
 		stopChans:  make([]chan struct{}, 0),
 	}
 
-	// Auto-start if symbols provided
-	if len(symbols) > 0 {
-		go s.start(symbols)
+	// Auto-start if pairs provided
+	if len(pairs) > 0 {
+		go s.start(pairs)
 	}
 
 	return s
 }
 
 // start initializes the WebSocket and subscribes to orderbook depth
-func (s *Source) start(symbols []string) {
-	for _, symbol := range symbols {
-		go s.subscribeSymbol(symbol)
+func (s *Source) start(pairs []orderbook.TradingPair) {
+	for _, pair := range pairs {
+		go s.subscribePair(pair)
 	}
 }
 
-// subscribeSymbol subscribes to depth updates for a single symbol
-func (s *Source) subscribeSymbol(symbol string) {
-	// Convert symbol format: BTC-USDT -> BTCUSDT (Binance format)
-	binanceSymbol := convertToBinanceSymbol(symbol)
+// subscribePair subscribes to depth updates for a single trading pair
+func (s *Source) subscribePair(pair orderbook.TradingPair) {
+	// Convert to Binance format: BTC + USDT -> BTCUSDT
+	binanceSymbol := pair.Base + pair.Quote
+	pairKey := pair.String()
 
 	wsDepthHandler := func(event *binance.WsPartialDepthEvent) {
-		base, quote := parseSymbol(symbol)
 		ob := &orderbook.OrderBook{
 			Source:    SourceName,
-			Symbol:    symbol, // Keep original format for consistency
-			Base:      base,
-			Quote:     quote,
+			Base:      pair.Base,
+			Quote:     pair.Quote,
 			Bids:      convertBids(event.Bids),
 			Asks:      convertAsks(event.Asks),
 			Timestamp: event.LastUpdateID,
@@ -67,7 +66,7 @@ func (s *Source) subscribeSymbol(symbol string) {
 		}
 
 		s.mu.Lock()
-		s.orderBooks[symbol] = ob
+		s.orderBooks[pairKey] = ob
 		callbacks := s.callbacks
 		s.mu.Unlock()
 
@@ -77,17 +76,17 @@ func (s *Source) subscribeSymbol(symbol string) {
 	}
 
 	errHandler := func(err error) {
-		log.Printf("[Binance] WebSocket error for %s: %v", symbol, err)
+		log.Printf("[Binance] WebSocket error for %s: %v", pairKey, err)
 	}
 
 	// Use WsPartialDepthServe100Ms for 20-level depth with 100ms updates
 	doneC, stopC, err := binance.WsPartialDepthServe100Ms(binanceSymbol, "20", wsDepthHandler, errHandler)
 	if err != nil {
-		log.Printf("[Binance] Failed to subscribe to depth for %s: %v", symbol, err)
+		log.Printf("[Binance] Failed to subscribe to depth for %s: %v", pairKey, err)
 		return
 	}
 
-	log.Printf("[Binance] Subscribed to depth for %s", symbol)
+	log.Printf("[Binance] Subscribed to depth for %s", pairKey)
 
 	s.mu.Lock()
 	s.stopChans = append(s.stopChans, stopC)
@@ -101,11 +100,11 @@ func (s *Source) Name() orderbook.PriceSourceName {
 	return SourceName
 }
 
-// GetOrderBook returns the latest orderbook for a symbol
-func (s *Source) GetOrderBook(symbol string) *orderbook.OrderBook {
+// GetOrderBook returns the latest orderbook for a trading pair
+func (s *Source) GetOrderBook(base, quote string) *orderbook.OrderBook {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.orderBooks[symbol]
+	return s.orderBooks[base+"-"+quote]
 }
 
 // GetAllOrderBooks returns all current orderbooks
@@ -137,20 +136,6 @@ func (s *Source) Stop() {
 }
 
 // Helper functions
-
-// convertToBinanceSymbol converts symbol format from BTC-USDT to BTCUSDT
-func convertToBinanceSymbol(symbol string) string {
-	return strings.ReplaceAll(symbol, "-", "")
-}
-
-// parseSymbol extracts base and quote from symbol format like "BTC-USDT"
-func parseSymbol(symbol string) (base, quote string) {
-	parts := strings.Split(symbol, "-")
-	if len(parts) == 2 {
-		return parts[0], parts[1]
-	}
-	return symbol, ""
-}
 
 func convertBids(bids []binance.Bid) []orderbook.PriceLevel {
 	result := make([]orderbook.PriceLevel, len(bids))

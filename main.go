@@ -41,17 +41,17 @@ func main() {
 	// Initialize orderbook store
 	OrderBookStore = orderbook.NewStore()
 
-	// Get symbols from config
-	kucoinSymbols := getKucoinSymbols()
-	binanceSymbols := getBinanceSymbols()
+	// Get trading pairs from config
+	kucoinPairs := getKucoinPairs()
+	binancePairs := getBinancePairs()
 
 	// Setup KuCoin source - automatically connects and streams orderbook data
 	kucoinClient := kucoin.NewClient()
-	kucoinSource := kucoin.NewSource(kucoinClient, kucoinSymbols)
+	kucoinSource := kucoin.NewSource(kucoinClient, kucoinPairs)
 
 	// Setup Binance source - automatically connects and streams orderbook data
 	binanceClient := binance.NewClient()
-	binanceSource := binance.NewSource(binanceClient, binanceSymbols)
+	binanceSource := binance.NewSource(binanceClient, binancePairs)
 
 	// Add sources to store
 	OrderBookStore.AddSource(kucoinSource)
@@ -62,12 +62,14 @@ func main() {
 	OrderBookStore.AddSource(ecogoldSource)
 
 	// Setup Nobitex source - WebSocket orderbook for USDT/IRT
-	nobitexSource := nobitex.NewSource([]string{"USDTIRT"})
+	nobitexSource := nobitex.NewSource([]orderbook.TradingPair{
+		{Base: "USDT", Quote: "IRT"},
+	})
 	OrderBookStore.AddSource(nobitexSource)
 
 	OrderBookStore.OnUpdate(func(key orderbook.OrderBookKey, ob *orderbook.OrderBook) {
 		log.Printf("[%s] %s - Best Bid: %s, Best Ask: %s",
-			ob.Source, ob.Symbol,
+			ob.Source, ob.Pair(),
 			formatPrice(ob.BestBid()),
 			formatPrice(ob.BestAsk()))
 		updateMetrics(ob)
@@ -83,7 +85,7 @@ func main() {
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 	router.GET("/orderbooks", getAllOrderbooks)
 	router.GET("/orderbooks/:source", getOrderbooksBySource)
-	router.GET("/orderbooks/:source/:symbol", getOrderbook)
+	router.GET("/orderbooks/:source/:base/:quote", getOrderbook)
 	router.GET("/stats", getStats)
 
 	// Graceful shutdown
@@ -142,18 +144,20 @@ func getOrderbooksBySource(c *gin.Context) {
 
 // getOrderbook godoc
 // @Summary Get specific orderbook
-// @Description Returns the orderbook for a specific price source and symbol
+// @Description Returns the orderbook for a specific price source, base and quote currency
 // @Tags Orderbooks
 // @Produce json
 // @Param source path string true "Price source name (e.g., kucoin, binance)"
-// @Param symbol path string true "Trading pair symbol (e.g., BTC-USDT)"
+// @Param base path string true "Base currency (e.g., BTC)"
+// @Param quote path string true "Quote currency (e.g., USDT)"
 // @Success 200 {object} orderbook.OrderBook
 // @Failure 404 {object} map[string]string
-// @Router /orderbooks/{source}/{symbol} [get]
+// @Router /orderbooks/{source}/{base}/{quote} [get]
 func getOrderbook(c *gin.Context) {
 	source := orderbook.PriceSourceName(c.Param("source"))
-	symbol := c.Param("symbol")
-	ob := OrderBookStore.Get(source, symbol)
+	base := c.Param("base")
+	quote := c.Param("quote")
+	ob := OrderBookStore.Get(source, base, quote)
 	if ob == nil {
 		c.JSON(404, gin.H{"error": "orderbook not found"})
 		return
@@ -172,20 +176,37 @@ func getStats(c *gin.Context) {
 	c.JSON(200, OrderBookStore.Stats())
 }
 
-func getKucoinSymbols() []string {
+// getKucoinPairs parses KUCOIN_DEFAULT_SYMBOLS env var (format: "BTC-USDT,ETH-USDT")
+func getKucoinPairs() []orderbook.TradingPair {
 	symbolsStr := config.KUCOIN_DEFAULT_SYMBOLS
 	if symbolsStr == "" {
 		return nil
 	}
-	return strings.Split(symbolsStr, ",")
+	return parsePairs(strings.Split(symbolsStr, ","))
 }
 
-func getBinanceSymbols() []string {
+// getBinancePairs parses BINANCE_DEFAULT_SYMBOLS env var (format: "BTC-USDT,ETH-USDT")
+func getBinancePairs() []orderbook.TradingPair {
 	symbolsStr := config.BINANCE_DEFAULT_SYMBOLS
 	if symbolsStr == "" {
 		return nil
 	}
-	return strings.Split(symbolsStr, ",")
+	return parsePairs(strings.Split(symbolsStr, ","))
+}
+
+// parsePairs converts symbol strings like "BTC-USDT" to TradingPair structs
+func parsePairs(symbols []string) []orderbook.TradingPair {
+	pairs := make([]orderbook.TradingPair, 0, len(symbols))
+	for _, s := range symbols {
+		parts := strings.Split(strings.TrimSpace(s), "-")
+		if len(parts) == 2 {
+			pairs = append(pairs, orderbook.TradingPair{
+				Base:  parts[0],
+				Quote: parts[1],
+			})
+		}
+	}
+	return pairs
 }
 
 func formatPrice(pl *orderbook.PriceLevel) string {
@@ -209,7 +230,8 @@ func updateMetrics(ob *orderbook.OrderBook) {
 
 	metrics.UpdateOrderbookMetrics(
 		ob.Source.String(),
-		ob.Symbol,
+		ob.Base,
+		ob.Quote,
 		bidPrice,
 		askPrice,
 		ob.UpdatedAt.UnixMilli(),

@@ -11,7 +11,6 @@ type PriceLevel struct {
 // OrderBook represents the current state of an order book
 type OrderBook struct {
 	Source    PriceSourceName `json:"source"`
-	Symbol    string          `json:"symbol"`
 	Base      string          `json:"base"`
 	Quote     string          `json:"quote"`
 	Bids      []PriceLevel    `json:"bids"`
@@ -23,12 +22,23 @@ type OrderBook struct {
 // OrderBookKey uniquely identifies an orderbook
 type OrderBookKey struct {
 	Source PriceSourceName
-	Symbol string
+	Base   string
+	Quote  string
 }
 
 // String returns a string representation of the key
 func (k OrderBookKey) String() string {
-	return k.Source.String() + ":" + k.Symbol
+	return k.Source.String() + ":" + k.Base + "-" + k.Quote
+}
+
+// Pair returns the trading pair string (e.g., "BTC-USDT")
+func (k OrderBookKey) Pair() string {
+	return k.Base + "-" + k.Quote
+}
+
+// Pair returns the trading pair string (e.g., "BTC-USDT")
+func (ob *OrderBook) Pair() string {
+	return ob.Base + "-" + ob.Quote
 }
 
 // BestBid returns the best (highest) bid price level, or nil if no bids

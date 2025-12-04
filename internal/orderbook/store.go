@@ -32,7 +32,7 @@ func (s *Store) AddSource(source PriceSource) {
 
 	// Register callback to update central store
 	source.OnUpdate(func(ob *OrderBook) {
-		key := OrderBookKey{Source: name, Symbol: ob.Symbol}
+		key := OrderBookKey{Source: name, Base: ob.Base, Quote: ob.Quote}
 
 		s.mu.Lock()
 		s.orderbooks[key] = ob
@@ -55,11 +55,11 @@ func (s *Store) OnUpdate(callback func(key OrderBookKey, ob *OrderBook)) {
 	s.callbacks = append(s.callbacks, callback)
 }
 
-// Get returns the orderbook for a specific source and symbol
-func (s *Store) Get(source PriceSourceName, symbol string) *OrderBook {
+// Get returns the orderbook for a specific source, base, and quote
+func (s *Store) Get(source PriceSourceName, base, quote string) *OrderBook {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.orderbooks[OrderBookKey{Source: source, Symbol: symbol}]
+	return s.orderbooks[OrderBookKey{Source: source, Base: base, Quote: quote}]
 }
 
 // GetByKey returns the orderbook for a specific key
@@ -89,20 +89,20 @@ func (s *Store) GetBySource(source PriceSourceName) map[string]*OrderBook {
 	result := make(map[string]*OrderBook)
 	for k, v := range s.orderbooks {
 		if k.Source == source {
-			result[k.Symbol] = v
+			result[k.Pair()] = v
 		}
 	}
 	return result
 }
 
-// GetBySymbol returns orderbooks for a symbol across all price sources
-func (s *Store) GetBySymbol(symbol string) map[PriceSourceName]*OrderBook {
+// GetByPair returns orderbooks for a trading pair (base-quote) across all price sources
+func (s *Store) GetByPair(base, quote string) map[PriceSourceName]*OrderBook {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	result := make(map[PriceSourceName]*OrderBook)
 	for k, v := range s.orderbooks {
-		if k.Symbol == symbol {
+		if k.Base == base && k.Quote == quote {
 			result[k.Source] = v
 		}
 	}
