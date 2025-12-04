@@ -10,6 +10,7 @@ import (
 	"arbi/internal/config"
 	_ "arbi/internal/metrics"
 	"arbi/internal/orderbook"
+	"arbi/internal/price-sources/ecogold"
 	"arbi/internal/price-sources/kucoin"
 
 	_ "arbi/docs" // swagger docs
@@ -42,9 +43,11 @@ func main() {
 	// Setup KuCoin source - automatically connects and streams orderbook data
 	kucoinClient := kucoin.NewClient()
 	kucoinSource := kucoin.NewSource(kucoinClient, symbols)
-
-	// Add source to store
 	OrderBookStore.AddSource(kucoinSource)
+
+	// Setup EcoGold source - polls OTC prices every 30 seconds
+	ecogoldSource := ecogold.NewSource()
+	OrderBookStore.AddSource(ecogoldSource)
 
 	// Register update callback for logging
 	OrderBookStore.OnUpdate(func(key orderbook.OrderBookKey, ob *orderbook.OrderBook) {
