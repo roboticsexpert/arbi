@@ -5,10 +5,10 @@ import (
 	"sync"
 )
 
-// Store is the central repository for all orderbooks from all exchanges
+// Store is the central repository for all orderbooks from all price sources
 type Store struct {
-	sources    map[string]PriceSource      // exchange name -> source
-	orderbooks map[OrderBookKey]*OrderBook // all orderbooks
+	sources    map[PriceSourceName]PriceSource // source name -> source
+	orderbooks map[OrderBookKey]*OrderBook     // all orderbooks
 	callbacks  []func(key OrderBookKey, ob *OrderBook)
 	mu         sync.RWMutex
 }
@@ -16,7 +16,7 @@ type Store struct {
 // NewStore creates a new central orderbook store
 func NewStore() *Store {
 	return &Store{
-		sources:    make(map[string]PriceSource),
+		sources:    make(map[PriceSourceName]PriceSource),
 		orderbooks: make(map[OrderBookKey]*OrderBook),
 		callbacks:  make([]func(key OrderBookKey, ob *OrderBook), 0),
 	}
@@ -32,8 +32,8 @@ func (s *Store) AddSource(source PriceSource) {
 
 	// Register callback to update central store
 	source.OnUpdate(func(ob *OrderBook) {
-		key := OrderBookKey{Exchange: name, Symbol: ob.Symbol}
-		
+		key := OrderBookKey{Source: name, Symbol: ob.Symbol}
+
 		s.mu.Lock()
 		s.orderbooks[key] = ob
 		callbacks := s.callbacks
@@ -45,7 +45,7 @@ func (s *Store) AddSource(source PriceSource) {
 		}
 	})
 
-	log.Printf("[Store] Added price source: %s", name)
+	log.Printf("[Store] Added price source: %s", name.String())
 }
 
 // OnUpdate registers a callback for orderbook updates
@@ -55,11 +55,11 @@ func (s *Store) OnUpdate(callback func(key OrderBookKey, ob *OrderBook)) {
 	s.callbacks = append(s.callbacks, callback)
 }
 
-// Get returns the orderbook for a specific exchange and symbol
-func (s *Store) Get(exchange, symbol string) *OrderBook {
+// Get returns the orderbook for a specific source and symbol
+func (s *Store) Get(source PriceSourceName, symbol string) *OrderBook {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.orderbooks[OrderBookKey{Exchange: exchange, Symbol: symbol}]
+	return s.orderbooks[OrderBookKey{Source: source, Symbol: symbol}]
 }
 
 // GetByKey returns the orderbook for a specific key
@@ -81,40 +81,40 @@ func (s *Store) GetAll() map[OrderBookKey]*OrderBook {
 	return result
 }
 
-// GetByExchange returns all orderbooks for a specific exchange
-func (s *Store) GetByExchange(exchange string) map[string]*OrderBook {
+// GetBySource returns all orderbooks for a specific price source
+func (s *Store) GetBySource(source PriceSourceName) map[string]*OrderBook {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	result := make(map[string]*OrderBook)
 	for k, v := range s.orderbooks {
-		if k.Exchange == exchange {
+		if k.Source == source {
 			result[k.Symbol] = v
 		}
 	}
 	return result
 }
 
-// GetBySymbol returns orderbooks for a symbol across all exchanges
-func (s *Store) GetBySymbol(symbol string) map[string]*OrderBook {
+// GetBySymbol returns orderbooks for a symbol across all price sources
+func (s *Store) GetBySymbol(symbol string) map[PriceSourceName]*OrderBook {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	result := make(map[string]*OrderBook)
+	result := make(map[PriceSourceName]*OrderBook)
 	for k, v := range s.orderbooks {
 		if k.Symbol == symbol {
-			result[k.Exchange] = v
+			result[k.Source] = v
 		}
 	}
 	return result
 }
 
 // GetSources returns all registered source names
-func (s *Store) GetSources() []string {
+func (s *Store) GetSources() []PriceSourceName {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	names := make([]string, 0, len(s.sources))
+	names := make([]PriceSourceName, 0, len(s.sources))
 	for name := range s.sources {
 		names = append(names, name)
 	}
@@ -129,7 +129,7 @@ func (s *Store) Stats() StoreStats {
 	stats := StoreStats{
 		TotalOrderbooks:   len(s.orderbooks),
 		RegisteredSources: len(s.sources),
-		SourceStats:       make(map[string]SourceStats),
+		SourceStats:       make(map[PriceSourceName]SourceStats),
 	}
 
 	for name, source := range s.sources {
@@ -143,9 +143,9 @@ func (s *Store) Stats() StoreStats {
 
 // StoreStats holds statistics about the store
 type StoreStats struct {
-	TotalOrderbooks   int                    `json:"total_orderbooks"`
-	RegisteredSources int                    `json:"registered_sources"`
-	SourceStats       map[string]SourceStats `json:"source_stats"`
+	TotalOrderbooks   int                             `json:"total_orderbooks"`
+	RegisteredSources int                             `json:"registered_sources"`
+	SourceStats       map[PriceSourceName]SourceStats `json:"source_stats"`
 }
 
 // SourceStats holds statistics for a single source

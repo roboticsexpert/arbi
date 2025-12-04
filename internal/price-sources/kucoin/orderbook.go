@@ -10,7 +10,7 @@ import (
 	"github.com/Kucoin/kucoin-universal-sdk/sdk/golang/pkg/generate/spot/spotpublic"
 )
 
-const ExchangeName = "kucoin"
+const SourceName = orderbook.PriceSourceKucoin
 
 // Source implements the orderbook.PriceSource interface for KuCoin
 // It automatically connects and streams 50-level orderbook data
@@ -57,7 +57,7 @@ func (s *Source) start(symbols []string) {
 		symbol := extractSymbolFromTopic(topic)
 
 		ob := &orderbook.OrderBook{
-			Exchange:  ExchangeName,
+			Source:    SourceName,
 			Symbol:    symbol,
 			Bids:      convertPriceLevels(data.Bids),
 			Asks:      convertPriceLevels(data.Asks),
@@ -85,9 +85,9 @@ func (s *Source) start(symbols []string) {
 	log.Printf("[KuCoin] Subscribed to Level50 orderbook for %v", symbols)
 }
 
-// Name returns the exchange name
-func (s *Source) Name() string {
-	return ExchangeName
+// Name returns the price source name
+func (s *Source) Name() orderbook.PriceSourceName {
+	return SourceName
 }
 
 // GetOrderBook returns the latest orderbook for a symbol

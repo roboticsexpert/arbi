@@ -12,6 +12,7 @@ import (
 	"arbi/internal/config"
 	"arbi/internal/metrics"
 	"arbi/internal/orderbook"
+	"arbi/internal/price-sources/binance"
 	"arbi/internal/price-sources/ecogold"
 	"arbi/internal/price-sources/kucoin"
 	"arbi/internal/price-sources/nobitex"
@@ -41,12 +42,20 @@ func main() {
 	OrderBookStore = orderbook.NewStore()
 
 	// Get symbols from config
-	symbols := getSymbols()
+	kucoinSymbols := getKucoinSymbols()
+	binanceSymbols := getBinanceSymbols()
 
 	// Setup KuCoin source - automatically connects and streams orderbook data
 	kucoinClient := kucoin.NewClient()
-	kucoinSource := kucoin.NewSource(kucoinClient, symbols)
+	kucoinSource := kucoin.NewSource(kucoinClient, kucoinSymbols)
+
+	// Setup Binance source - automatically connects and streams orderbook data
+	binanceClient := binance.NewClient()
+	binanceSource := binance.NewSource(binanceClient, binanceSymbols)
+
+	// Add sources to store
 	OrderBookStore.AddSource(kucoinSource)
+	OrderBookStore.AddSource(binanceSource)
 
 	// Setup EcoGold source - polls OTC prices every 30 seconds
 	ecogoldSource := ecogold.NewSource()
@@ -56,15 +65,11 @@ func main() {
 	nobitexSource := nobitex.NewSource([]string{"USDTIRT"})
 	OrderBookStore.AddSource(nobitexSource)
 
-	// Register update callback for logging and metrics
 	OrderBookStore.OnUpdate(func(key orderbook.OrderBookKey, ob *orderbook.OrderBook) {
 		log.Printf("[%s] %s - Best Bid: %s, Best Ask: %s",
-			ob.Exchange, ob.Symbol,
+			ob.Source, ob.Symbol,
 			formatPrice(ob.BestBid()),
 			formatPrice(ob.BestAsk()))
-
-		// Update Prometheus metrics
-		updateMetrics(ob)
 	})
 
 	// Setup Gin router
@@ -76,8 +81,8 @@ func main() {
 	router.GET("/up", healthCheck)
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 	router.GET("/orderbooks", getAllOrderbooks)
-	router.GET("/orderbooks/:exchange", getOrderbooksByExchange)
-	router.GET("/orderbooks/:exchange/:symbol", getOrderbook)
+	router.GET("/orderbooks/:source", getOrderbooksBySource)
+	router.GET("/orderbooks/:source/:symbol", getOrderbook)
 	router.GET("/stats", getStats)
 
 	// Graceful shutdown
@@ -121,33 +126,33 @@ func getAllOrderbooks(c *gin.Context) {
 	c.JSON(200, result)
 }
 
-// getOrderbooksByExchange godoc
-// @Summary Get orderbooks by exchange
-// @Description Returns all orderbooks for a specific exchange
+// getOrderbooksBySource godoc
+// @Summary Get orderbooks by source
+// @Description Returns all orderbooks for a specific price source
 // @Tags Orderbooks
 // @Produce json
-// @Param exchange path string true "Exchange name (e.g., kucoin)"
+// @Param source path string true "Price source name (e.g., kucoin, binance)"
 // @Success 200 {object} map[string]orderbook.OrderBook
-// @Router /orderbooks/{exchange} [get]
-func getOrderbooksByExchange(c *gin.Context) {
-	exchange := c.Param("exchange")
-	c.JSON(200, OrderBookStore.GetByExchange(exchange))
+// @Router /orderbooks/{source} [get]
+func getOrderbooksBySource(c *gin.Context) {
+	source := orderbook.PriceSourceName(c.Param("source"))
+	c.JSON(200, OrderBookStore.GetBySource(source))
 }
 
 // getOrderbook godoc
 // @Summary Get specific orderbook
-// @Description Returns the orderbook for a specific exchange and symbol
+// @Description Returns the orderbook for a specific price source and symbol
 // @Tags Orderbooks
 // @Produce json
-// @Param exchange path string true "Exchange name (e.g., kucoin)"
+// @Param source path string true "Price source name (e.g., kucoin, binance)"
 // @Param symbol path string true "Trading pair symbol (e.g., BTC-USDT)"
 // @Success 200 {object} orderbook.OrderBook
 // @Failure 404 {object} map[string]string
-// @Router /orderbooks/{exchange}/{symbol} [get]
+// @Router /orderbooks/{source}/{symbol} [get]
 func getOrderbook(c *gin.Context) {
-	exchange := c.Param("exchange")
+	source := orderbook.PriceSourceName(c.Param("source"))
 	symbol := c.Param("symbol")
-	ob := OrderBookStore.Get(exchange, symbol)
+	ob := OrderBookStore.Get(source, symbol)
 	if ob == nil {
 		c.JSON(404, gin.H{"error": "orderbook not found"})
 		return
@@ -166,8 +171,16 @@ func getStats(c *gin.Context) {
 	c.JSON(200, OrderBookStore.Stats())
 }
 
-func getSymbols() []string {
+func getKucoinSymbols() []string {
 	symbolsStr := config.KUCOIN_DEFAULT_SYMBOLS
+	if symbolsStr == "" {
+		return nil
+	}
+	return strings.Split(symbolsStr, ",")
+}
+
+func getBinanceSymbols() []string {
+	symbolsStr := config.BINANCE_DEFAULT_SYMBOLS
 	if symbolsStr == "" {
 		return nil
 	}
@@ -194,10 +207,10 @@ func updateMetrics(ob *orderbook.OrderBook) {
 	}
 
 	metrics.UpdateOrderbookMetrics(
-		ob.Exchange,
+		ob.Source.String(),
 		ob.Symbol,
 		bidPrice,
 		askPrice,
-		ob.Timestamp,
+		ob.UpdatedAt.UnixMilli(),
 	)
 }

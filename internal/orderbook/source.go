@@ -3,8 +3,8 @@ package orderbook
 // PriceSource defines the interface that all exchange implementations must satisfy
 // Sources automatically connect and stay up, streaming orderbook data continuously
 type PriceSource interface {
-	// Name returns the exchange name (e.g., "kucoin", "binance")
-	Name() string
+	// Name returns the price source name
+	Name() PriceSourceName
 
 	// GetOrderBook returns the latest orderbook for a symbol
 	GetOrderBook(symbol string) *OrderBook
@@ -23,4 +23,36 @@ type SourceConfig struct {
 
 	// ProxyURL for connections (optional)
 	ProxyURL string
+}
+
+type PriceSourceName string
+
+const (
+	PriceSourceBinance PriceSourceName = "binance"
+	PriceSourceKucoin  PriceSourceName = "kucoin"
+	PriceSourceEcoGold PriceSourceName = "ecogold"
+	PriceSourceNobitex PriceSourceName = "nobitex"
+)
+
+// String returns the string value of the price source
+func (p PriceSourceName) String() string {
+	return string(p)
+}
+
+// IsValid checks if the price source is a known/valid source
+func (p PriceSourceName) IsValid() bool {
+	switch p {
+	case PriceSourceBinance, PriceSourceKucoin:
+		return true
+	default:
+		return false
+	}
+}
+
+// AllPriceSources returns all available price sources
+func AllPriceSources() []PriceSourceName {
+	return []PriceSourceName{
+		PriceSourceBinance,
+		PriceSourceKucoin,
+	}
 }

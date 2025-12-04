@@ -10,23 +10,23 @@ type PriceLevel struct {
 
 // OrderBook represents the current state of an order book
 type OrderBook struct {
-	Exchange  string       `json:"exchange"`
-	Symbol    string       `json:"symbol"`
-	Bids      []PriceLevel `json:"bids"`
-	Asks      []PriceLevel `json:"asks"`
-	Timestamp int64        `json:"timestamp"`
-	UpdatedAt time.Time    `json:"updated_at"`
+	Source    PriceSourceName `json:"source"`
+	Symbol    string          `json:"symbol"`
+	Bids      []PriceLevel    `json:"bids"`
+	Asks      []PriceLevel    `json:"asks"`
+	Timestamp int64           `json:"timestamp"`
+	UpdatedAt time.Time       `json:"updated_at"`
 }
 
 // OrderBookKey uniquely identifies an orderbook
 type OrderBookKey struct {
-	Exchange string
-	Symbol   string
+	Source PriceSourceName
+	Symbol string
 }
 
 // String returns a string representation of the key
 func (k OrderBookKey) String() string {
-	return k.Exchange + ":" + k.Symbol
+	return k.Source.String() + ":" + k.Symbol
 }
 
 // BestBid returns the best (highest) bid price level, or nil if no bids
@@ -44,4 +44,3 @@ func (ob *OrderBook) BestAsk() *PriceLevel {
 	}
 	return &ob.Asks[0]
 }
-

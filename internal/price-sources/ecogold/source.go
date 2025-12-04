@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	ExchangeName  = "ecogold"
+	SourceName    = orderbook.PriceSourceEcoGold
 	PollInterval  = 30 * time.Second
 	DefaultVolume = "1000" // Simulated volume for OTC orderbook
 )
@@ -90,8 +90,8 @@ func (s *Source) convertToOrderBook(price PriceData) *orderbook.OrderBook {
 	// - buy_price = price at which exchange buys from you = BID (you sell at this price)
 
 	return &orderbook.OrderBook{
-		Exchange: ExchangeName,
-		Symbol:   price.Symbol,
+		Source: orderbook.PriceSourceEcoGold,
+		Symbol: price.Symbol,
 		Bids: []orderbook.PriceLevel{
 			{
 				Price:    price.BuyPrice,
@@ -110,8 +110,8 @@ func (s *Source) convertToOrderBook(price PriceData) *orderbook.OrderBook {
 }
 
 // Name returns the exchange name
-func (s *Source) Name() string {
-	return ExchangeName
+func (s *Source) Name() orderbook.PriceSourceName {
+	return orderbook.PriceSourceEcoGold
 }
 
 // GetOrderBook returns the latest orderbook for a symbol
@@ -142,5 +142,3 @@ func (s *Source) OnUpdate(callback func(*orderbook.OrderBook)) {
 
 // Ensure Source implements PriceSource interface
 var _ orderbook.PriceSource = (*Source)(nil)
-
-

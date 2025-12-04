@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	ExchangeName = "nobitex"
+	SourceName   = orderbook.PriceSourceNobitex
 	WebSocketURL = "wss://ws.nobitex.ir/connection/websocket"
 )
 
@@ -165,7 +165,7 @@ func (s *Source) convertToOrderBook(symbol string, data *OrderbookData) *orderbo
 	}
 
 	return &orderbook.OrderBook{
-		Exchange:  ExchangeName,
+		Source:    orderbook.PriceSourceNobitex,
 		Symbol:    symbol,
 		Bids:      bids,
 		Asks:      asks,
@@ -190,8 +190,8 @@ func convertIRRtoIRT(priceStr string) string {
 }
 
 // Name returns the exchange name
-func (s *Source) Name() string {
-	return ExchangeName
+func (s *Source) Name() orderbook.PriceSourceName {
+	return orderbook.PriceSourceNobitex
 }
 
 // GetOrderBook returns the latest orderbook for a symbol
