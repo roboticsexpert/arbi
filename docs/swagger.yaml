@@ -1,0 +1,150 @@
+basePath: /
+definitions:
+  orderbook.OrderBook:
+    properties:
+      asks:
+        items:
+          $ref: '#/definitions/orderbook.PriceLevel'
+        type: array
+      bids:
+        items:
+          $ref: '#/definitions/orderbook.PriceLevel'
+        type: array
+      exchange:
+        type: string
+      symbol:
+        type: string
+      timestamp:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  orderbook.PriceLevel:
+    properties:
+      price:
+        type: string
+      quantity:
+        type: string
+    type: object
+  orderbook.SourceStats:
+    properties:
+      orderbooks:
+        type: integer
+    type: object
+  orderbook.StoreStats:
+    properties:
+      registered_sources:
+        type: integer
+      source_stats:
+        additionalProperties:
+          $ref: '#/definitions/orderbook.SourceStats'
+        type: object
+      total_orderbooks:
+        type: integer
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: Cryptocurrency Orderbook Aggregator API - Real-time orderbook data
+    from multiple exchanges
+  title: Arbi API
+  version: "1.0"
+paths:
+  /orderbooks:
+    get:
+      description: Returns all orderbooks from all exchanges
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/orderbook.OrderBook'
+            type: object
+      summary: Get all orderbooks
+      tags:
+      - Orderbooks
+  /orderbooks/{exchange}:
+    get:
+      description: Returns all orderbooks for a specific exchange
+      parameters:
+      - description: Exchange name (e.g., kucoin)
+        in: path
+        name: exchange
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/orderbook.OrderBook'
+            type: object
+      summary: Get orderbooks by exchange
+      tags:
+      - Orderbooks
+  /orderbooks/{exchange}/{symbol}:
+    get:
+      description: Returns the orderbook for a specific exchange and symbol
+      parameters:
+      - description: Exchange name (e.g., kucoin)
+        in: path
+        name: exchange
+        required: true
+        type: string
+      - description: Trading pair symbol (e.g., BTC-USDT)
+        in: path
+        name: symbol
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/orderbook.OrderBook'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get specific orderbook
+      tags:
+      - Orderbooks
+  /stats:
+    get:
+      description: Returns statistics about the orderbook store
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/orderbook.StoreStats'
+      summary: Get statistics
+      tags:
+      - Stats
+  /up:
+    get:
+      description: Check if the service is running
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Health check
+      tags:
+      - Health
+schemes:
+- http
+- https
+swagger: "2.0"

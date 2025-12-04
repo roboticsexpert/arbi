@@ -1,0 +1,227 @@
+{
+    "schemes": [
+        "http",
+        "https"
+    ],
+    "swagger": "2.0",
+    "info": {
+        "description": "Cryptocurrency Orderbook Aggregator API - Real-time orderbook data from multiple exchanges",
+        "title": "Arbi API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "host": "localhost:8080",
+    "basePath": "/",
+    "paths": {
+        "/orderbooks": {
+            "get": {
+                "description": "Returns all orderbooks from all exchanges",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Orderbooks"
+                ],
+                "summary": "Get all orderbooks",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/orderbook.OrderBook"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/orderbooks/{exchange}": {
+            "get": {
+                "description": "Returns all orderbooks for a specific exchange",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Orderbooks"
+                ],
+                "summary": "Get orderbooks by exchange",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Exchange name (e.g., kucoin)",
+                        "name": "exchange",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/orderbook.OrderBook"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/orderbooks/{exchange}/{symbol}": {
+            "get": {
+                "description": "Returns the orderbook for a specific exchange and symbol",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Orderbooks"
+                ],
+                "summary": "Get specific orderbook",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Exchange name (e.g., kucoin)",
+                        "name": "exchange",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Trading pair symbol (e.g., BTC-USDT)",
+                        "name": "symbol",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/orderbook.OrderBook"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/stats": {
+            "get": {
+                "description": "Returns statistics about the orderbook store",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Stats"
+                ],
+                "summary": "Get statistics",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/orderbook.StoreStats"
+                        }
+                    }
+                }
+            }
+        },
+        "/up": {
+            "get": {
+                "description": "Check if the service is running",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Health"
+                ],
+                "summary": "Health check",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "orderbook.OrderBook": {
+            "type": "object",
+            "properties": {
+                "asks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/orderbook.PriceLevel"
+                    }
+                },
+                "bids": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/orderbook.PriceLevel"
+                    }
+                },
+                "exchange": {
+                    "type": "string"
+                },
+                "symbol": {
+                    "type": "string"
+                },
+                "timestamp": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "orderbook.PriceLevel": {
+            "type": "object",
+            "properties": {
+                "price": {
+                    "type": "string"
+                },
+                "quantity": {
+                    "type": "string"
+                }
+            }
+        },
+        "orderbook.SourceStats": {
+            "type": "object",
+            "properties": {
+                "orderbooks": {
+                    "type": "integer"
+                }
+            }
+        },
+        "orderbook.StoreStats": {
+            "type": "object",
+            "properties": {
+                "registered_sources": {
+                    "type": "integer"
+                },
+                "source_stats": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/orderbook.SourceStats"
+                    }
+                },
+                "total_orderbooks": {
+                    "type": "integer"
+                }
+            }
+        }
+    }
+}

@@ -1,67 +1,39 @@
 package orderbook
 
 import (
-	"context"
-	"fmt"
 	"log"
 	"sync"
-	"time"
 )
 
 // Store is the central repository for all orderbooks from all exchanges
 type Store struct {
-	sources    map[string]PriceSource       // exchange name -> source
-	orderbooks map[OrderBookKey]*OrderBook  // all orderbooks
-	callbacks  []func(key OrderBookKey, ob *OrderBook) // global update callbacks
+	sources    map[string]PriceSource      // exchange name -> source
+	orderbooks map[OrderBookKey]*OrderBook // all orderbooks
+	callbacks  []func(key OrderBookKey, ob *OrderBook)
 	mu         sync.RWMutex
-	ctx        context.Context
-	cancel     context.CancelFunc
 }
 
 // NewStore creates a new central orderbook store
 func NewStore() *Store {
-	ctx, cancel := context.WithCancel(context.Background())
 	return &Store{
 		sources:    make(map[string]PriceSource),
 		orderbooks: make(map[OrderBookKey]*OrderBook),
 		callbacks:  make([]func(key OrderBookKey, ob *OrderBook), 0),
-		ctx:        ctx,
-		cancel:     cancel,
 	}
 }
 
-// RegisterSource adds a price source to the store
-func (s *Store) RegisterSource(source PriceSource) error {
+// AddSource adds a price source to the store
+// The source is already running and streaming data
+func (s *Store) AddSource(source PriceSource) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	name := source.Name()
-	if _, exists := s.sources[name]; exists {
-		return fmt.Errorf("source %s already registered", name)
-	}
-
 	s.sources[name] = source
-	log.Printf("[Store] Registered price source: %s", name)
-	return nil
-}
+	s.mu.Unlock()
 
-// Subscribe subscribes to orderbook updates for symbols on a specific exchange
-func (s *Store) Subscribe(exchange string, symbols []string) error {
-	s.mu.RLock()
-	source, exists := s.sources[exchange]
-	s.mu.RUnlock()
+	// Register callback to update central store
+	source.OnUpdate(func(ob *OrderBook) {
+		key := OrderBookKey{Exchange: name, Symbol: ob.Symbol}
 
-	if !exists {
-		return fmt.Errorf("exchange %s not registered", exchange)
-	}
-
-	// Create callback that updates the central store
-	callback := func(ob *OrderBook) {
-		ob.Exchange = exchange
-		ob.UpdatedAt = time.Now()
-		
-		key := OrderBookKey{Exchange: exchange, Symbol: ob.Symbol}
-		
 		s.mu.Lock()
 		s.orderbooks[key] = ob
 		callbacks := s.callbacks
@@ -71,31 +43,9 @@ func (s *Store) Subscribe(exchange string, symbols []string) error {
 		for _, cb := range callbacks {
 			cb(key, ob)
 		}
-	}
+	})
 
-	return source.Subscribe(s.ctx, symbols, callback)
-}
-
-// SubscribeAll subscribes to the given symbols on all registered exchanges
-func (s *Store) SubscribeAll(symbols []string) error {
-	s.mu.RLock()
-	sources := make([]PriceSource, 0, len(s.sources))
-	for _, src := range s.sources {
-		sources = append(sources, src)
-	}
-	s.mu.RUnlock()
-
-	var errs []error
-	for _, source := range sources {
-		if err := s.Subscribe(source.Name(), symbols); err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", source.Name(), err))
-		}
-	}
-
-	if len(errs) > 0 {
-		return fmt.Errorf("subscription errors: %v", errs)
-	}
-	return nil
+	log.Printf("[Store] Added price source: %s", name)
 }
 
 // OnUpdate registers a callback for orderbook updates
@@ -171,52 +121,6 @@ func (s *Store) GetSources() []string {
 	return names
 }
 
-// StartAll starts all registered sources
-func (s *Store) StartAll() error {
-	s.mu.RLock()
-	sources := make([]PriceSource, 0, len(s.sources))
-	for _, src := range s.sources {
-		sources = append(sources, src)
-	}
-	s.mu.RUnlock()
-
-	var errs []error
-	for _, source := range sources {
-		if err := source.Start(); err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", source.Name(), err))
-		}
-	}
-
-	if len(errs) > 0 {
-		return fmt.Errorf("start errors: %v", errs)
-	}
-	return nil
-}
-
-// StopAll stops all registered sources and cleans up
-func (s *Store) StopAll() error {
-	s.cancel()
-
-	s.mu.RLock()
-	sources := make([]PriceSource, 0, len(s.sources))
-	for _, src := range s.sources {
-		sources = append(sources, src)
-	}
-	s.mu.RUnlock()
-
-	var errs []error
-	for _, source := range sources {
-		if err := source.Stop(); err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", source.Name(), err))
-		}
-	}
-
-	if len(errs) > 0 {
-		return fmt.Errorf("stop errors: %v", errs)
-	}
-	return nil
-}
-
 // Stats returns statistics about the store
 func (s *Store) Stats() StoreStats {
 	s.mu.RLock()
@@ -230,8 +134,7 @@ func (s *Store) Stats() StoreStats {
 
 	for name, source := range s.sources {
 		stats.SourceStats[name] = SourceStats{
-			Running:     source.IsRunning(),
-			Orderbooks:  len(source.GetAllOrderBooks()),
+			Orderbooks: len(source.GetAllOrderBooks()),
 		}
 	}
 
@@ -247,7 +150,5 @@ type StoreStats struct {
 
 // SourceStats holds statistics for a single source
 type SourceStats struct {
-	Running    bool `json:"running"`
-	Orderbooks int  `json:"orderbooks"`
+	Orderbooks int `json:"orderbooks"`
 }
-
