@@ -87,9 +87,9 @@ func (s *Source) fetchAndUpdate() {
 
 // convertToOrderBook converts OTC price data to orderbook format
 func (s *Source) convertToOrderBook(price PriceData) *orderbook.OrderBook {
-	// In OTC:
-	// - sell_price = price at which exchange sells to you = ASK (you buy at this price)
-	// - buy_price = price at which exchange buys from you = BID (you sell at this price)
+	// Special contract with EcoGold:
+	// Both buy and sell use the same price (buy_price)
+	// - buy_price = price at which we buy from EcoGold AND sell to EcoGold
 
 	base, quote := parseSymbol(price.Symbol)
 
@@ -99,13 +99,13 @@ func (s *Source) convertToOrderBook(price PriceData) *orderbook.OrderBook {
 		Quote:  quote,
 		Bids: []orderbook.PriceLevel{
 			{
-				Price:    price.BuyPrice,
+				Price:    price.BuyPrice, // We sell at buy_price
 				Quantity: DefaultVolume,
 			},
 		},
 		Asks: []orderbook.PriceLevel{
 			{
-				Price:    price.SellPrice,
+				Price:    price.BuyPrice, // We buy at buy_price (special contract)
 				Quantity: DefaultVolume,
 			},
 		},

@@ -34,8 +34,8 @@ type PriceResponse struct {
 // PriceData represents a single price entry
 type PriceData struct {
 	Symbol    string `json:"symbol"`
-	SellPrice string `json:"buy_price"`  // Price at which ecogold sells (your buy/ask)
-	BuyPrice  string `json:"sell_price"` // Price at which ecogold buys (your sell/bid)
+	SellPrice string `json:"sell_price"` // Price at which ecogold sells (your buy/ask)
+	BuyPrice  string `json:"buy_price"`  // Price at which ecogold buys (your sell/bid)
 	Change    string `json:"change"`
 	Signature string `json:"signature"`
 	ValidAt   string `json:"valid_at"`
