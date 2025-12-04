@@ -1,0 +1,14 @@
+services:
+  web:
+    image: ${IMAGE_BASE}
+    ports:
+      - "13254:8080"
+    environment:
+      PROXY_URL: ${PROXY_URI}
+
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+      update_config:
+        order: start-first

@@ -1,0 +1,41 @@
+stages:
+  - build
+  - deploy
+
+variables:
+  DOCKER_BUILDKIT: 1
+  IMAGE_BASE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+  IMAGE_BRANCH: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+  IMAGE_MAIN: $CI_REGISTRY_IMAGE:main
+
+
+
+build:
+  needs: [ ]
+  interruptible: true
+  stage: build
+  script:
+    - echo "$CI_JOB_TOKEN" | docker login --username "$CI_REGISTRY_USER" "$CI_REGISTRY" --password-stdin
+    - docker pull $IMAGE_BRANCH || true
+    - docker pull $IMAGE_MAIN || true
+    - docker build --build-arg PROXY_URI="${PROXY_URI}" --build-arg BUILDKIT_INLINE_CACHE=1 --cache-from $IMAGE_BRANCH --cache-from $IMAGE_MAIN -t $IMAGE_BASE -t $IMAGE_BRANCH . -f Dockerfile
+    - docker push $IMAGE_BASE
+    - docker push $IMAGE_BRANCH
+  only:
+    - main
+
+
+deploy:production:
+  interruptible: true
+  needs: [ "build"]
+  stage: deploy
+  script:
+    - echo "$CI_DEPLOY_PASSWORD" | docker login --username "$CI_DEPLOY_USER" "$CI_REGISTRY" --password-stdin
+    - docker stack deploy arbi -c docker-compose.yml --with-registry-auth --detach=false --prune
+  tags:
+    - production
+  only:
+    - main
+  environment:
+    name: Production
+
