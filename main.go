@@ -14,7 +14,6 @@ import (
 	"arbi/internal/config"
 	"arbi/internal/metrics"
 	"arbi/internal/orderbook"
-	"arbi/internal/price-sources/binance"
 	"arbi/internal/price-sources/ecogold"
 	"arbi/internal/price-sources/kucoin"
 	"arbi/internal/price-sources/nobitex"
@@ -47,19 +46,19 @@ func main() {
 
 	// Get trading pairs from config
 	kucoinPairs := getKucoinPairs()
-	binancePairs := getBinancePairs()
+	// binancePairs := getBinancePairs()
 
 	// Setup KuCoin source - automatically connects and streams orderbook data
 	kucoinClient := kucoin.NewClient()
 	kucoinSource := kucoin.NewSource(kucoinClient, kucoinPairs)
 
 	// Setup Binance source - automatically connects and streams orderbook data
-	binanceClient := binance.NewClient()
-	binanceSource := binance.NewSource(binanceClient, binancePairs)
+	// binanceClient := binance.NewClient()
+	// binanceSource := binance.NewSource(binanceClient, binancePairs)
 
 	// Add sources to store
 	OrderBookStore.AddSource(kucoinSource)
-	OrderBookStore.AddSource(binanceSource)
+	// OrderBookStore.AddSource(binanceSource)
 
 	// Setup EcoGold source - polls OTC prices every 30 seconds
 	ecogoldSource := ecogold.NewSource()
