@@ -68,6 +68,7 @@ func main() {
 	// Setup Nobitex source - WebSocket orderbook for USDT/IRT
 	nobitexSource := nobitex.NewSource([]orderbook.TradingPair{
 		{Base: "USDT", Quote: "IRT"},
+		{Base: "BTC", Quote: "IRT"},
 	})
 	OrderBookStore.AddSource(nobitexSource)
 
