@@ -46,14 +46,18 @@ func NewFinder(store *orderbook.Store, startAmount float64) *Finder {
 		targetCurrency: "IRT",
 		maxDepth:       6, // Maximum 6 steps in a chain
 		conversionRates: []ConversionRate{
+			{From: "PAXG", To: "XAUT", Rate: 1},
+			{From: "XAUT", To: "PAXG", Rate: 1},
 			{From: "PAXG", To: "GOLD18", Rate: 41.4665196},
 			{From: "GOLD18", To: "PAXG", Rate: 1.0 / 41.4665196},
+			{From: "XAUT", To: "GOLD18", Rate: 41.4665196},
+			{From: "GOLD18", To: "XAUT", Rate: 1.0 / 41.4665196},
 		},
 		exchangeFees: map[orderbook.PriceSourceName]float64{
-			orderbook.PriceSourceBinance: 0.001,  // 0.1%
-			orderbook.PriceSourceKucoin:  0.001,  // 0.1%
-			orderbook.PriceSourceNobitex: 0.002,  // 0.2%
-			orderbook.PriceSourceEcoGold: 0.0,    // 0%
+			orderbook.PriceSourceBinance: 0.001, // 0.1%
+			orderbook.PriceSourceKucoin:  0.001, // 0.1%
+			orderbook.PriceSourceNobitex: 0.002, // 0.2%
+			orderbook.PriceSourceEcoGold: 0.0,   // 0%
 		},
 		stopCh: make(chan struct{}),
 	}
@@ -232,7 +236,7 @@ func (f *Finder) FindAllChains() []ArbitrageChain {
 			if isTrivialChain(path) {
 				return
 			}
-			
+
 			chain := f.buildChainFromPath(path)
 			if chain != nil {
 				allChains = append(allChains, *chain)
@@ -373,5 +377,3 @@ func (f *Finder) buildChainFromPath(edges []Edge) *ArbitrageChain {
 		Path:          strings.Join(pathParts, "-"),
 	}
 }
-
-
