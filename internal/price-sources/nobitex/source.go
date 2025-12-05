@@ -151,8 +151,12 @@ func (s *Source) convertToOrderBook(pair orderbook.TradingPair, data *OrderbookD
 	bids := make([]orderbook.PriceLevel, 0, len(data.Bids))
 	for _, bid := range data.Bids {
 		if len(bid) >= 2 {
+			price := bid[0]
+			if pair.Quote == "IRT" {
+				price = convertIRRtoIRT(price)
+			}
 			bids = append(bids, orderbook.PriceLevel{
-				Price:    convertIRRtoIRT(bid[0]),
+				Price:    price,
 				Quantity: bid[1],
 			})
 		}
@@ -161,8 +165,12 @@ func (s *Source) convertToOrderBook(pair orderbook.TradingPair, data *OrderbookD
 	asks := make([]orderbook.PriceLevel, 0, len(data.Asks))
 	for _, ask := range data.Asks {
 		if len(ask) >= 2 {
+			price := ask[0]
+			if pair.Quote == "IRT" {
+				price = convertIRRtoIRT(price)
+			}
 			asks = append(asks, orderbook.PriceLevel{
-				Price:    convertIRRtoIRT(ask[0]),
+				Price:    price,
 				Quantity: ask[1],
 			})
 		}
