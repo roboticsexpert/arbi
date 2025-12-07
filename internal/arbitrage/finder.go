@@ -130,7 +130,38 @@ func (f *Finder) FindAndPrint() {
 		}
 
 		log.Printf("[%d] %s", i+1, chain.Path)
-		log.Printf("    Start: %s IRT -> End: %s IRT | Profit: %s (%s IRT)",
+
+		// Print detailed steps with volumes
+		for j, step := range chain.Steps {
+			if step.Type == "trade" && step.Trade != nil {
+				t := step.Trade
+				actionStr := "خرید"
+				if t.Action == "sell" {
+					actionStr = "فروش"
+				}
+				log.Printf("    مرحله %d: %s %s %s @ %s %s | حجم: %s %s (کارمزد: %.2f%%)",
+					j+1,
+					actionStr,
+					FormatNumber(t.Amount),
+					t.Base,
+					FormatNumber(t.Price),
+					t.Quote,
+					FormatNumber(t.Volume),
+					t.Quote,
+					t.FeePercent)
+			} else if step.Type == "conversion" && step.FixedConversion != nil {
+				c := step.FixedConversion
+				log.Printf("    مرحله %d: تبدیل %s %s -> %s %s (نرخ: %s)",
+					j+1,
+					FormatNumber(c.AmountIn),
+					c.From,
+					FormatNumber(c.AmountOut),
+					c.To,
+					FormatNumber(c.Rate))
+			}
+		}
+
+		log.Printf("    نتیجه: %s IRT -> %s IRT | سود: %s (%s IRT)",
 			FormatNumber(chain.StartAmount),
 			FormatNumber(chain.EndAmount),
 			profitStr,
