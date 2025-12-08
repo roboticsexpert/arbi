@@ -48,16 +48,28 @@ var (
 		Help: "Last orderbook update timestamp (unix milliseconds) for each exchange, base and quote",
 	}, []string{"exchange", "base", "quote"})
 
-	// ArbitrageProfit tracks the profit/loss percentage for each arbitrage chain
+	// ArbitrageProfit tracks the profit/loss percentage for each arbitrage chain (with fee)
 	ArbitrageProfit = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "arbi_arbitrage_profit_percent",
-		Help: "Profit/loss percentage for each arbitrage chain path",
+		Help: "Profit/loss percentage for each arbitrage chain path (with fee)",
 	}, []string{"path"})
 
-	// ArbitrageProfitIRT tracks the profit/loss in IRT for each arbitrage chain
+	// ArbitrageProfitIRT tracks the profit/loss in IRT for each arbitrage chain (with fee)
 	ArbitrageProfitIRT = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "arbi_arbitrage_profit_irt",
-		Help: "Profit/loss in IRT for each arbitrage chain path",
+		Help: "Profit/loss in IRT for each arbitrage chain path (with fee)",
+	}, []string{"path"})
+
+	// ArbitrageProfitNoFee tracks the profit/loss percentage for each arbitrage chain (without fee)
+	ArbitrageProfitNoFee = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "arbi_arbitrage_profit_percent_no_fee",
+		Help: "Profit/loss percentage for each arbitrage chain path (without fee)",
+	}, []string{"path"})
+
+	// ArbitrageProfitIRTNoFee tracks the profit/loss in IRT for each arbitrage chain (without fee)
+	ArbitrageProfitIRTNoFee = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "arbi_arbitrage_profit_irt_no_fee",
+		Help: "Profit/loss in IRT for each arbitrage chain path (without fee)",
 	}, []string{"path"})
 )
 
@@ -79,14 +91,22 @@ func UpdateOrderbookMetrics(exchange, base, quote string, bidPrice, askPrice flo
 	OrderbookUpdateTime.WithLabelValues(exchange, base, quote).Set(float64(timestamp))
 }
 
-// UpdateArbitrageMetrics updates the arbitrage chain metrics
+// UpdateArbitrageMetrics updates the arbitrage chain metrics (with fee)
 func UpdateArbitrageMetrics(path string, profitPercent, profitIRT float64) {
 	ArbitrageProfit.WithLabelValues(path).Set(profitPercent)
 	ArbitrageProfitIRT.WithLabelValues(path).Set(profitIRT)
+}
+
+// UpdateArbitrageMetricsNoFee updates the arbitrage chain metrics (without fee)
+func UpdateArbitrageMetricsNoFee(path string, profitPercent, profitIRT float64) {
+	ArbitrageProfitNoFee.WithLabelValues(path).Set(profitPercent)
+	ArbitrageProfitIRTNoFee.WithLabelValues(path).Set(profitIRT)
 }
 
 // ResetArbitrageMetrics resets all arbitrage metrics (call before updating with new chains)
 func ResetArbitrageMetrics() {
 	ArbitrageProfit.Reset()
 	ArbitrageProfitIRT.Reset()
+	ArbitrageProfitNoFee.Reset()
+	ArbitrageProfitIRTNoFee.Reset()
 }

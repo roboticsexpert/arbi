@@ -47,5 +47,9 @@ type ArbitrageChain struct {
 	EndAmount     float64     `json:"end_amount"`
 	ProfitLoss    float64     `json:"profit_loss"`
 	ProfitPercent float64     `json:"profit_percent"`
-	Path          string      `json:"path"` // Human readable path like "IRT -> USDT (nobitex) -> PAXG (binance) -> GOLD18 (convert) -> IRT (ecogold)"
+	// Without fee calculations
+	EndAmountNoFee     float64 `json:"end_amount_no_fee"`
+	ProfitLossNoFee    float64 `json:"profit_loss_no_fee"`
+	ProfitPercentNoFee float64 `json:"profit_percent_no_fee"`
+	Path               string  `json:"path"` // Human readable path like "IRT -> USDT (nobitex) -> PAXG (binance) -> GOLD18 (convert) -> IRT (ecogold)"
 }

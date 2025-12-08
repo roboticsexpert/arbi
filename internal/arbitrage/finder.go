@@ -115,6 +115,7 @@ func (f *Finder) FindAndPrint() {
 	metrics.ResetArbitrageMetrics()
 	for _, chain := range chains {
 		metrics.UpdateArbitrageMetrics(chain.Path, chain.ProfitPercent, chain.ProfitLoss)
+		metrics.UpdateArbitrageMetricsNoFee(chain.Path, chain.ProfitPercentNoFee, chain.ProfitLossNoFee)
 	}
 
 	if len(chains) == 0 {
@@ -161,11 +162,22 @@ func (f *Finder) FindAndPrint() {
 			}
 		}
 
-		log.Printf("    result: %s IRT -> %s IRT | profit: %s (%s IRT)",
+		// No-fee profit string
+		profitStrNoFee := fmt.Sprintf("%.2f%%", chain.ProfitPercentNoFee)
+		if chain.ProfitLossNoFee >= 0 {
+			profitStrNoFee = "+" + profitStrNoFee
+		}
+
+		log.Printf("    result (with fee): %s IRT -> %s IRT | profit: %s (%s IRT)",
 			FormatNumber(chain.StartAmount),
 			FormatNumber(chain.EndAmount),
 			profitStr,
 			FormatNumber(chain.ProfitLoss))
+		log.Printf("    result (no fee):   %s IRT -> %s IRT | profit: %s (%s IRT)",
+			FormatNumber(chain.StartAmount),
+			FormatNumber(chain.EndAmountNoFee),
+			profitStrNoFee,
+			FormatNumber(chain.ProfitLossNoFee))
 	}
 	log.Println("[Arbitrage] ==========================================")
 }
@@ -335,10 +347,12 @@ func (f *Finder) buildChainFromPath(edges []Edge) *ArbitrageChain {
 	steps := make([]ChainStep, 0, len(edges))
 	pathParts := []string{f.targetCurrency}
 	currentAmount := f.startAmount
+	currentAmountNoFee := f.startAmount // Track amount without fees
 
 	for _, edge := range edges {
 		if edge.Type == "conversion" {
 			outputAmount := currentAmount * edge.Rate
+			outputAmountNoFee := currentAmountNoFee * edge.Rate
 			steps = append(steps, ChainStep{
 				Type: "conversion",
 				FixedConversion: &FixedConversionStep{
@@ -351,6 +365,7 @@ func (f *Finder) buildChainFromPath(edges []Edge) *ArbitrageChain {
 			})
 			pathParts = append(pathParts, "convert", edge.To)
 			currentAmount = outputAmount
+			currentAmountNoFee = outputAmountNoFee
 		} else {
 			var action string
 			if edge.IsBuy {
@@ -363,6 +378,9 @@ func (f *Finder) buildChainFromPath(edges []Edge) *ArbitrageChain {
 			if outputAmount <= 0 {
 				return nil
 			}
+
+			// Calculate without fee (for no-fee tracking)
+			outputAmountNoFeeCalc, _ := CalculateTradeOutput(edge.OrderBook, action, currentAmountNoFee)
 
 			fee := f.getFee(edge.Exchange)
 			outputAmountAfterFee := outputAmount * (1 - fee)
@@ -391,20 +409,28 @@ func (f *Finder) buildChainFromPath(edges []Edge) *ArbitrageChain {
 			})
 			pathParts = append(pathParts, string(edge.Exchange), edge.To)
 			currentAmount = outputAmountAfterFee
+			currentAmountNoFee = outputAmountNoFeeCalc // No fee applied
 		}
 	}
 
 	profitLoss := currentAmount - f.startAmount
 	profitPercent := (profitLoss / f.startAmount) * 100
 
+	// Calculate no-fee profit
+	profitLossNoFee := currentAmountNoFee - f.startAmount
+	profitPercentNoFee := (profitLossNoFee / f.startAmount) * 100
+
 	return &ArbitrageChain{
-		Steps:         steps,
-		StartCurrency: f.targetCurrency,
-		EndCurrency:   f.targetCurrency,
-		StartAmount:   f.startAmount,
-		EndAmount:     currentAmount,
-		ProfitLoss:    profitLoss,
-		ProfitPercent: profitPercent,
-		Path:          strings.Join(pathParts, "-"),
+		Steps:              steps,
+		StartCurrency:      f.targetCurrency,
+		EndCurrency:        f.targetCurrency,
+		StartAmount:        f.startAmount,
+		EndAmount:          currentAmount,
+		ProfitLoss:         profitLoss,
+		ProfitPercent:      profitPercent,
+		EndAmountNoFee:     currentAmountNoFee,
+		ProfitLossNoFee:    profitLossNoFee,
+		ProfitPercentNoFee: profitPercentNoFee,
+		Path:               strings.Join(pathParts, "-"),
 	}
 }
