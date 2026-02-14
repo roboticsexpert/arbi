@@ -1,6 +1,7 @@
 # Multi-stage build for smaller final image
 FROM golang:1.24-alpine AS builder
 
+ARG PROXY_URI
 # Install git and ca-certificates (needed for fetching dependencies and HTTPS)
 RUN apk add --no-cache git ca-certificates tzdata
 
@@ -11,7 +12,7 @@ WORKDIR /app
 COPY go.mod go.sum ./
 
 # Download dependencies
-RUN go mod download
+RUN http_proxy=$PROXY_URI go mod download
 
 # Copy all source code
 COPY . .
