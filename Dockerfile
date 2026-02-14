@@ -12,7 +12,7 @@ WORKDIR /app
 COPY go.mod go.sum ./
 
 # Download dependencies
-RUN http_proxy=$PROXY_URI go mod download
+RUN http_proxy=$PROXY_URI https_proxy=$PROXY_URI go mod download
 
 # Copy all source code
 COPY . .
