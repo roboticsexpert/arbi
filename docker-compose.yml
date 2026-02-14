@@ -4,6 +4,7 @@ services:
     ports:
       - "13254:8080"
     environment:
+      NOBITEX_TOKEN: ${NOBITEX_TOKEN}
       PROXY_URI: ${PROXY_URI}
 
     deploy:
