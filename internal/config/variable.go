@@ -15,6 +15,7 @@ var (
 	BINANCE_API_SECRET      string
 	BINANCE_DEFAULT_SYMBOLS string
 	PROXY_URI               string
+	NOBITEX_TOKEN           string
 )
 
 func init() {
@@ -30,5 +31,6 @@ func init() {
 	BINANCE_API_KEY = os.Getenv("BINANCE_API_KEY")
 	BINANCE_API_SECRET = os.Getenv("BINANCE_API_SECRET")
 	BINANCE_DEFAULT_SYMBOLS = os.Getenv("BINANCE_DEFAULT_SYMBOLS")
-	PROXY_URI = os.Getenv("PROXY_URI")
+	PROXY_URI               = os.Getenv("PROXY_URI")
+	NOBITEX_TOKEN           = os.Getenv("NOBITEX_TOKEN")
 }

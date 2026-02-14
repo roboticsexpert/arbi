@@ -71,6 +71,12 @@ var (
 		Name: "arbi_arbitrage_profit_irt_no_fee",
 		Help: "Profit/loss in IRT for each arbitrage chain path (without fee)",
 	}, []string{"path"})
+
+	// WalletBalance tracks wallet balance per exchange and currency
+	WalletBalance = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "arbi_wallet_balance",
+		Help: "Wallet balance for each exchange and currency",
+	}, []string{"exchange", "currency"})
 )
 
 // IncrementRequests increments the request counter
@@ -109,4 +115,11 @@ func ResetArbitrageMetrics() {
 	ArbitrageProfitIRT.Reset()
 	ArbitrageProfitNoFee.Reset()
 	ArbitrageProfitIRTNoFee.Reset()
+}
+
+// UpdateWalletBalanceMetrics updates wallet balance metrics for an exchange
+func UpdateWalletBalanceMetrics(exchange string, balances map[string]float64) {
+	for currency, balance := range balances {
+		WalletBalance.WithLabelValues(exchange, currency).Set(balance)
+	}
 }

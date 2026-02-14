@@ -72,6 +72,9 @@ func main() {
 	})
 	OrderBookStore.AddSource(nobitexSource)
 
+	// Start Nobitex balance fetcher (polls every 1 min when NOBITEX_TOKEN is set)
+	nobitex.StartBalanceFetcher()
+
 	OrderBookStore.OnUpdate(func(key orderbook.OrderBookKey, ob *orderbook.OrderBook) {
 		// log.Printf("[%s] %s - Best Bid: %s, Best Ask: %s",
 		// 	ob.Source, ob.Pair(),
