@@ -64,10 +64,9 @@ func main() {
 	ecogoldSource := ecogold.NewSource()
 	OrderBookStore.AddSource(ecogoldSource)
 
-	// Setup Nobitex source - WebSocket orderbook for USDT/IRT
-	nobitexSource := nobitex.NewSource([]orderbook.TradingPair{
-		{Base: "USDT", Quote: "IRT"},
-	})
+	// Setup Nobitex source - WebSocket orderbook (pairs from NOBITEX_DEFAULT_SYMBOLS)
+	nobitexPairs := getNobitexPairs()
+	nobitexSource := nobitex.NewSource(nobitexPairs)
 	OrderBookStore.AddSource(nobitexSource)
 
 	// Start Nobitex balance fetcher (polls every 1 min when NOBITEX_TOKEN is set)
@@ -210,6 +209,16 @@ func getKucoinPairs() []orderbook.TradingPair {
 	symbolsStr := config.KUCOIN_DEFAULT_SYMBOLS
 	if symbolsStr == "" {
 		return nil
+	}
+	return parsePairs(strings.Split(symbolsStr, ","))
+}
+
+// getNobitexPairs parses NOBITEX_DEFAULT_SYMBOLS env var (format: "USDT-IRT,BTC-IRT")
+func getNobitexPairs() []orderbook.TradingPair {
+	symbolsStr := config.NOBITEX_DEFAULT_SYMBOLS
+	if symbolsStr == "" {
+		// Default: USDT/IRT if not configured
+		return []orderbook.TradingPair{{Base: "USDT", Quote: "IRT"}}
 	}
 	return parsePairs(strings.Split(symbolsStr, ","))
 }
