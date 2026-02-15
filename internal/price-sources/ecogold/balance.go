@@ -10,7 +10,7 @@ import (
 	"arbi/internal/orderbook"
 )
 
-const balancePollInterval = 10 * time.Minute
+const balancePollInterval = 10 * time.Second
 
 // StartBalanceFetcher starts a goroutine that:
 // 1. Every 10 minutes: POSTs password to verify-password (keeps token valid)
