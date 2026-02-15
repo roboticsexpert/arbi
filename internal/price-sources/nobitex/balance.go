@@ -10,7 +10,7 @@ import (
 	"arbi/internal/orderbook"
 )
 
-const balancePollInterval = 1 * time.Minute
+const balancePollInterval = 10 * time.Second
 
 // normalizeNobitexBalance converts Nobitex-specific units to standard symbols.
 // RLS (Rial) -> IRT (Toman): 1 IRT = 10 RLS

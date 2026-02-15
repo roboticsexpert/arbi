@@ -48,6 +48,12 @@ var (
 		Help: "Last orderbook update timestamp (unix milliseconds) for each exchange, base and quote",
 	}, []string{"exchange", "base", "quote"})
 
+	// InventoryLastFetchTime tracks the last time we successfully fetched inventory/balance per exchange
+	InventoryLastFetchTime = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "arbi_inventory_last_fetch_timestamp",
+		Help: "Last inventory/balance fetch timestamp (unix seconds) for each price source",
+	}, []string{"exchange"})
+
 	// ArbitrageProfit tracks the profit/loss percentage for each arbitrage chain (with fee)
 	ArbitrageProfit = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "arbi_arbitrage_profit_percent",
@@ -122,4 +128,5 @@ func UpdateWalletBalanceMetrics(exchange string, balances map[string]float64) {
 	for currency, balance := range balances {
 		WalletBalance.WithLabelValues(exchange, currency).Set(balance)
 	}
+	InventoryLastFetchTime.WithLabelValues(exchange).Set(float64(time.Now().Unix()))
 }
