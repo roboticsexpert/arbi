@@ -3,6 +3,7 @@ package kucoin
 import (
 	"net/http"
 	"net/url"
+	"time"
 
 	"arbi/internal/config"
 
@@ -28,10 +29,11 @@ func NewClient() *Client {
 	secret := config.KUCOIN_API_SECRET
 	passphrase := config.KUCOIN_API_PASSPHRASE
 
-	// Set WebSocket options with auto-reconnect
+	// Set WebSocket options with auto-reconnect (high attempts for VPN/network issues)
 	wsOption := types.NewWebSocketClientOptionBuilder().
 		WithReconnect(true).
-		WithReconnectAttempts(3).
+		WithReconnectAttempts(100).
+		WithReconnectInterval(5 * time.Second).
 		Build()
 
 	// Set HTTP transport options

@@ -11,57 +11,106 @@ import (
 	"github.com/Kucoin/kucoin-universal-sdk/sdk/golang/pkg/generate/spot/spotpublic"
 )
 
-const SourceName = orderbook.PriceSourceKucoin
+const (
+	SourceName       = orderbook.PriceSourceKucoin
+	reconnectDelay   = 10 * time.Second
+	stalenessCheck   = 30 * time.Second
+	stalenessTimeout = 60 * time.Second
+)
 
 // Source implements the orderbook.PriceSource interface for KuCoin
-// It automatically connects and streams 50-level orderbook data
+// It automatically connects and streams 50-level orderbook data with retry on failure
 type Source struct {
-	client       *Client
-	spotPublicWs spotpublic.SpotPublicWS
-	orderBooks   map[string]*orderbook.OrderBook // key: "base-quote"
-	callbacks    []func(*orderbook.OrderBook)
-	mu           sync.RWMutex
+	client        *Client
+	spotPublicWs  spotpublic.SpotPublicWS
+	orderBooks    map[string]*orderbook.OrderBook // key: "base-quote"
+	callbacks     []func(*orderbook.OrderBook)
+	pairs         []orderbook.TradingPair
+	lastUpdateAt  time.Time
+	mu            sync.RWMutex
 }
 
 // NewSource creates a new KuCoin price source and automatically starts streaming
 // orderbook data for the given pairs (50-level depth by default)
 // pairs format: []orderbook.TradingPair{{Base: "BTC", Quote: "USDT"}, ...}
 func NewSource(client *Client, pairs []orderbook.TradingPair) *Source {
-	wsService := client.GetAPIClient().WsService()
-	spotPublicWs := wsService.NewSpotPublicWS()
-
 	s := &Source{
-		client:       client,
-		spotPublicWs: spotPublicWs,
-		orderBooks:   make(map[string]*orderbook.OrderBook),
-		callbacks:    make([]func(*orderbook.OrderBook), 0),
+		client:     client,
+		orderBooks: make(map[string]*orderbook.OrderBook),
+		callbacks:  make([]func(*orderbook.OrderBook), 0),
+		pairs:      pairs,
 	}
 
-	// Auto-start if pairs provided
 	if len(pairs) > 0 {
-		go s.start(pairs)
+		go s.connectLoop()
 	}
 
 	return s
 }
 
-// start initializes the WebSocket and subscribes to 50-level orderbook
-func (s *Source) start(pairs []orderbook.TradingPair) {
-	// Start WebSocket connection
-	if err := s.spotPublicWs.Start(); err != nil {
-		log.Printf("[KuCoin] Failed to start WebSocket: %v", err)
-		return
+// connectLoop runs indefinitely: connect, monitor for staleness, reconnect on failure
+func (s *Source) connectLoop() {
+	for {
+		if err := s.doConnect(); err != nil {
+			log.Printf("[KuCoin] Connection failed: %v, retrying in %v...", err, reconnectDelay)
+			time.Sleep(reconnectDelay)
+			continue
+		}
+
+		// Connected successfully - monitor for staleness (no data = dead connection)
+		connectedAt := time.Now()
+		ticker := time.NewTicker(stalenessCheck)
+		shouldReconnect := false
+		for !shouldReconnect {
+			<-ticker.C
+			s.mu.RLock()
+			lastUpdate := s.lastUpdateAt
+			s.mu.RUnlock()
+			// Reconnect if: (a) we had data but it stopped, or (b) we never got data after 90s
+			if !lastUpdate.IsZero() && time.Since(lastUpdate) > stalenessTimeout {
+				log.Printf("[KuCoin] No orderbook data for %v, reconnecting...", stalenessTimeout)
+				shouldReconnect = true
+			} else if lastUpdate.IsZero() && time.Since(connectedAt) > 90*time.Second {
+				log.Printf("[KuCoin] No orderbook data since connect after 90s, reconnecting...")
+				shouldReconnect = true
+			}
+		}
+		ticker.Stop()
+
+		// Stop old connection before reconnecting
+		s.mu.Lock()
+		if s.spotPublicWs != nil {
+			_ = s.spotPublicWs.Stop()
+			s.spotPublicWs = nil
+		}
+		s.mu.Unlock()
+	}
+}
+
+// doConnect establishes WebSocket connection and subscribes to orderbook
+func (s *Source) doConnect() error {
+	// Stop previous connection if any
+	s.mu.Lock()
+	if s.spotPublicWs != nil {
+		_ = s.spotPublicWs.Stop()
+		s.spotPublicWs = nil
+	}
+	s.mu.Unlock()
+
+	wsService := s.client.GetAPIClient().WsService()
+	spotPublicWs := wsService.NewSpotPublicWS()
+
+	if err := spotPublicWs.Start(); err != nil {
+		return err
 	}
 	log.Println("[KuCoin] WebSocket connected")
 
-	// Convert pairs to KuCoin symbol format (BTC-USDT)
-	symbols := make([]string, len(pairs))
-	for i, p := range pairs {
+	symbols := make([]string, len(s.pairs))
+	for i, p := range s.pairs {
 		symbols[i] = p.Base + "-" + p.Quote
 	}
 
-	// Subscribe to Level50 orderbook
-	_, err := s.spotPublicWs.OrderbookLevel50(symbols, func(topic string, subject string, data *spotpublic.OrderbookLevel50Event) error {
+	_, err := spotPublicWs.OrderbookLevel50(symbols, func(topic string, subject string, data *spotpublic.OrderbookLevel50Event) error {
 		symbol := extractSymbolFromTopic(topic)
 		base, quote := parseSymbol(symbol)
 		pairKey := base + "-" + quote
@@ -78,6 +127,7 @@ func (s *Source) start(pairs []orderbook.TradingPair) {
 
 		s.mu.Lock()
 		s.orderBooks[pairKey] = ob
+		s.lastUpdateAt = time.Now()
 		callbacks := s.callbacks
 		s.mu.Unlock()
 
@@ -89,11 +139,16 @@ func (s *Source) start(pairs []orderbook.TradingPair) {
 	})
 
 	if err != nil {
-		log.Printf("[KuCoin] Failed to subscribe to Level50 orderbook: %v", err)
-		return
+		_ = spotPublicWs.Stop()
+		return err
 	}
 
+	s.mu.Lock()
+	s.spotPublicWs = spotPublicWs
+	s.mu.Unlock()
+
 	log.Printf("[KuCoin] Subscribed to Level50 orderbook for %v", symbols)
+	return nil
 }
 
 // Name returns the price source name
