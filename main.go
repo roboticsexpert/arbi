@@ -285,6 +285,6 @@ func updateMetrics(ob *orderbook.OrderBook) {
 		ob.Quote,
 		bidPrice,
 		askPrice,
-		ob.UpdatedAt.UnixMilli(),
+		ob.UpdatedAt.Unix(),
 	)
 }

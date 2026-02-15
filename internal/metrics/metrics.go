@@ -45,7 +45,7 @@ var (
 	// OrderbookUpdateTime tracks the last update timestamp per exchange, base and quote
 	OrderbookUpdateTime = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "arbi_orderbook_update_timestamp",
-		Help: "Last orderbook update timestamp (unix milliseconds) for each exchange, base and quote",
+		Help: "Last orderbook update timestamp (unix seconds) for each exchange, base and quote",
 	}, []string{"exchange", "base", "quote"})
 
 	// InventoryLastFetchTime tracks the last time we successfully fetched inventory/balance per exchange
