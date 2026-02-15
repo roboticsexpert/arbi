@@ -75,6 +75,9 @@ func main() {
 	// Start Nobitex balance fetcher (polls every 1 min when NOBITEX_TOKEN is set)
 	nobitex.StartBalanceFetcher()
 
+	// Start EcoGold balance fetcher (verify password + fetch every 10 min when ECOGOLD_TOKEN is set)
+	ecogold.StartBalanceFetcher()
+
 	OrderBookStore.OnUpdate(func(key orderbook.OrderBookKey, ob *orderbook.OrderBook) {
 		// log.Printf("[%s] %s - Best Bid: %s, Best Ask: %s",
 		// 	ob.Source, ob.Pair(),

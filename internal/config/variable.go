@@ -16,6 +16,8 @@ var (
 	BINANCE_DEFAULT_SYMBOLS string
 	PROXY_URI               string
 	NOBITEX_TOKEN           string
+	ECOGOLD_TOKEN           string
+	ECOGOLD_PASSWORD        string
 )
 
 func init() {
@@ -33,4 +35,6 @@ func init() {
 	BINANCE_DEFAULT_SYMBOLS = os.Getenv("BINANCE_DEFAULT_SYMBOLS")
 	PROXY_URI               = os.Getenv("PROXY_URI")
 	NOBITEX_TOKEN           = os.Getenv("NOBITEX_TOKEN")
+	ECOGOLD_TOKEN           = os.Getenv("ECOGOLD_TOKEN")
+	ECOGOLD_PASSWORD        = os.Getenv("ECOGOLD_PASSWORD")
 }

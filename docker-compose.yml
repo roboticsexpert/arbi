@@ -6,7 +6,8 @@ services:
     environment:
       NOBITEX_TOKEN: ${NOBITEX_TOKEN}
       PROXY_URI: ${PROXY_URI}
-
+      ECOGOLD_TOKEN: ${ECOGOLD_TOKEN}
+      ECOGOLD_PASSWORD: ${ECOGOLD_PASSWORD}
     deploy:
       replicas: 1
       restart_policy:
