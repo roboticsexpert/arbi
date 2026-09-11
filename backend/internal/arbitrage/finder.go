@@ -25,6 +25,20 @@ type Edge struct {
 	OrderBook *orderbook.OrderBook
 }
 
+// Gold unit conversions.
+//
+// gold24ToGold18 is deliberately derived from paxgToGold18 rather than from
+// first principles. Computing it independently (31.1034768 / 0.750 = 41.4713)
+// disagrees with the PAXG factor already in use by ~0.011%, because that factor
+// implies a purity of 0.7500874 rather than a clean 0.750. Two routes to the
+// same metal that disagree would show up as a permanent phantom edge between
+// the MT5 leg and the PAXG leg, so both are pinned to the same constant.
+const (
+	gramsPerTroyOunce = 31.1035
+	paxgToGold18      = 41.4665196
+	gold24ToGold18    = paxgToGold18 / gramsPerTroyOunce
+)
+
 // Finder finds arbitrage opportunities across exchanges
 type Finder struct {
 	store           *orderbook.Store
@@ -48,16 +62,30 @@ func NewFinder(store *orderbook.Store, startAmount float64) *Finder {
 		conversionRates: []ConversionRate{
 			{From: "PAXG", To: "XAUT", Rate: 1},
 			{From: "XAUT", To: "PAXG", Rate: 1},
-			{From: "PAXG", To: "GOLD18", Rate: 41.4665196},
-			{From: "GOLD18", To: "PAXG", Rate: 1.0 / 41.4665196},
-			{From: "XAUT", To: "GOLD18", Rate: 41.4665196},
-			{From: "GOLD18", To: "XAUT", Rate: 1.0 / 41.4665196},
+			{From: "PAXG", To: "GOLD18", Rate: paxgToGold18},
+			{From: "GOLD18", To: "PAXG", Rate: 1.0 / paxgToGold18},
+			{From: "XAUT", To: "GOLD18", Rate: paxgToGold18},
+			{From: "GOLD18", To: "XAUT", Rate: 1.0 / paxgToGold18},
+
+			// MetaTrader quotes gold per gram of 24k, in USD.
+			{From: "GOLD24", To: "GOLD18", Rate: gold24ToGold18},
+			{From: "GOLD18", To: "GOLD24", Rate: 1.0 / gold24ToGold18},
+
+			// The MT5 leg is priced in USD and everything else in USDT, so the
+			// two are pinned 1:1. This is an assumption, not a quote: any real
+			// USD/USDT basis is silently absorbed into the reported profit.
+			{From: "USD", To: "USDT", Rate: 1},
+			{From: "USDT", To: "USD", Rate: 1},
 		},
 		exchangeFees: map[orderbook.PriceSourceName]float64{
 			orderbook.PriceSourceBinance: 0.001, // 0.1%
 			orderbook.PriceSourceKucoin:  0.001, // 0.1%
 			orderbook.PriceSourceNobitex: 0.002, // 0.2%
 			orderbook.PriceSourceEcoGold: 0.0,   // 0%
+			// Placeholder. The broker's spread is already in the bid/ask, but
+			// commission and swap are not modelled - that needs the symbol
+			// specification (contract size, commission per lot, swap).
+			orderbook.PriceSourceMT5: 0.001, // 0.1%
 		},
 		stopCh: make(chan struct{}),
 	}

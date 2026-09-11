@@ -1,0 +1,72 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-ink-950: #07090f;
+  --color-ink-900: #0b0f17;
+  --color-ink-850: #10151f;
+  --color-ink-800: #161c28;
+  --color-ink-700: #1f2736;
+  --color-ink-600: #2b3547;
+  --color-ink-400: #6b7688;
+  --color-ink-300: #94a0b3;
+  --color-ink-200: #c3ccda;
+
+  --color-gain-500: #10b981;
+  --color-gain-400: #34d399;
+  --color-loss-500: #f43f5e;
+  --color-loss-400: #fb7185;
+  --color-warn-400: #fbbf24;
+  --color-accent-400: #60a5fa;
+
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(60rem 40rem at 15% -10%, rgba(96, 165, 250, 0.07), transparent 60%),
+    radial-gradient(50rem 35rem at 95% 0%, rgba(16, 185, 129, 0.06), transparent 55%),
+    var(--color-ink-950);
+  color: var(--color-ink-200);
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+/* Numeric columns line up only with tabular figures. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+
+/* Brief highlight when a polled value actually changed. */
+@keyframes flash-gain {
+  from { background-color: rgba(16, 185, 129, 0.22); }
+  to { background-color: transparent; }
+}
+@keyframes flash-loss {
+  from { background-color: rgba(244, 63, 94, 0.22); }
+  to { background-color: transparent; }
+}
+.flash-up { animation: flash-gain 900ms ease-out; }
+.flash-down { animation: flash-loss 900ms ease-out; }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.pulse-dot { animation: pulse-dot 1.8s ease-in-out infinite; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--color-ink-700);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--color-ink-600); background-clip: content-box; }

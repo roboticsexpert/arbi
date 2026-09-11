@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -12,10 +13,12 @@ import (
 
 	"arbi/internal/arbitrage"
 	"arbi/internal/config"
+	"arbi/internal/httpx"
 	"arbi/internal/metrics"
 	"arbi/internal/orderbook"
 	"arbi/internal/price-sources/ecogold"
 	"arbi/internal/price-sources/kucoin"
+	"arbi/internal/price-sources/mt5"
 	"arbi/internal/price-sources/nobitex"
 
 	"arbi/docs" // swagger docs
@@ -31,6 +34,9 @@ var OrderBookStore *orderbook.Store
 
 // Global arbitrage finder
 var ArbFinder *arbitrage.Finder
+
+// Global MetaTrader 5 source - fed by the Expert Advisor via POST /api/mt5/ticks
+var MT5Source *mt5.Source
 
 // @title Arbi API
 // @version 1.0
@@ -69,6 +75,10 @@ func main() {
 	nobitexSource := nobitex.NewSource(nobitexPairs)
 	OrderBookStore.AddSource(nobitexSource)
 
+	// Setup MetaTrader 5 source - a sink, fed by the EA running in the terminal
+	MT5Source = mt5.NewSource(getMT5StaleAfter())
+	OrderBookStore.AddSource(MT5Source)
+
 	// Start Nobitex balance fetcher (polls every 1 min when NOBITEX_TOKEN is set)
 	nobitex.StartBalanceFetcher()
 
@@ -89,17 +99,37 @@ func main() {
 
 	// Setup Gin router
 	router := gin.Default()
+	router.Use(httpx.CORS(config.DASHBOARD_ORIGINS))
+
+	// Open endpoints: the platform health check and the Prometheus scrape must
+	// stay reachable without a token.
+	router.GET("/up", healthCheck)
+	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// Swagger documentation - dynamically uses request host
 	router.GET("/swagger/*any", swaggerHandler())
 
-	router.GET("/up", healthCheck)
-	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
-	router.GET("/orderbooks", getAllOrderbooks)
-	router.GET("/orderbooks/:source", getOrderbooksBySource)
-	router.GET("/orderbooks/:source/:base/:quote", getOrderbook)
-	router.GET("/stats", getStats)
-	router.GET("/arbitrage", getArbitrageChains)
+	// Data endpoints, gated by DASHBOARD_TOKEN when it is set.
+	api := router.Group("/", httpx.RequireToken(config.DASHBOARD_TOKEN))
+	api.GET("/orderbooks", getAllOrderbooks)
+	api.GET("/orderbooks/:source", getOrderbooksBySource)
+	api.GET("/orderbooks/:source/:base/:quote", getOrderbook)
+	api.GET("/stats", getStats)
+	api.GET("/arbitrage", getArbitrageChains)
+	api.GET("/balances", getBalances)
+	api.GET("/overview", getOverview)
+
+	// MetaTrader 5 tick ingest. This is the only write endpoint, so it is
+	// registered only when a token is configured - an open ingest would let
+	// anyone inject gold prices into the arbitrage graph.
+	if config.MT5_INGEST_TOKEN != "" {
+		router.POST("/api/mt5/ticks",
+			httpx.RequireTokenHeader(httpx.MT5Header, config.MT5_INGEST_TOKEN),
+			postMT5Ticks)
+		log.Println("[MT5] Tick ingest enabled at POST /api/mt5/ticks")
+	} else {
+		log.Println("[MT5] MT5_INGEST_TOKEN not set - tick ingest disabled")
+	}
 
 	// Graceful shutdown
 	go func() {
@@ -202,6 +232,98 @@ func getArbitrageChains(c *gin.Context) {
 		"count":  len(chains),
 		"chains": chains,
 	})
+}
+
+// getBalances godoc
+// @Summary Get wallet balances
+// @Description Returns the latest wallet balances per price source
+// @Tags Balances
+// @Produce json
+// @Success 200 {array} metrics.ExchangeBalances
+// @Router /balances [get]
+func getBalances(c *gin.Context) {
+	c.JSON(200, metrics.GetBalanceSnapshots())
+}
+
+// getOverview godoc
+// @Summary Dashboard overview
+// @Description Returns orderbooks, arbitrage chains, balances and stats in one payload
+// @Tags Dashboard
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /overview [get]
+func getOverview(c *gin.Context) {
+	all := OrderBookStore.GetAll()
+	books := make([]*orderbook.OrderBook, 0, len(all))
+	for _, ob := range all {
+		books = append(books, ob)
+	}
+	sort.Slice(books, func(i, j int) bool {
+		if books[i].Source != books[j].Source {
+			return books[i].Source < books[j].Source
+		}
+		return books[i].Pair() < books[j].Pair()
+	})
+
+	chains := ArbFinder.GetLastChains()
+
+	c.JSON(200, gin.H{
+		"server_time": time.Now(),
+		"stats":       OrderBookStore.Stats(),
+		"orderbooks":  books,
+		"arbitrage":   chains,
+		"balances":    metrics.GetBalanceSnapshots(),
+	})
+}
+
+// postMT5Ticks godoc
+// @Summary Ingest MetaTrader 5 ticks
+// @Description Accepts top-of-book quotes pushed by the MetaTrader 5 Expert Advisor
+// @Tags MT5
+// @Accept json
+// @Produce json
+// @Param ticks body mt5.PushRequest true "Ticks"
+// @Success 200 {object} mt5.PushResult
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Router /api/mt5/ticks [post]
+func postMT5Ticks(c *gin.Context) {
+	var req mt5.PushRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "invalid payload: " + err.Error()})
+		return
+	}
+	if len(req.Ticks) == 0 {
+		c.JSON(400, gin.H{"error": "no ticks in payload"})
+		return
+	}
+
+	result := MT5Source.Push(req.Ticks)
+	if len(result.Accepted) == 0 {
+		// Every tick bounced - almost always a symbol-name mismatch, so say
+		// which names would have worked instead of returning a bare 200.
+		c.JSON(400, gin.H{
+			"error":         "no ticks accepted",
+			"skipped":       result.Skipped,
+			"known_symbols": mt5.KnownSymbols(),
+		})
+		return
+	}
+
+	c.JSON(200, result)
+}
+
+// getMT5StaleAfter reads MT5_STALE_SECONDS, falling back to the package default
+func getMT5StaleAfter() time.Duration {
+	if config.MT5_STALE_SECONDS == "" {
+		return mt5.DefaultStaleAfter
+	}
+	secs, err := strconv.Atoi(config.MT5_STALE_SECONDS)
+	if err != nil || secs <= 0 {
+		log.Printf("[MT5] Invalid MT5_STALE_SECONDS %q, using %v", config.MT5_STALE_SECONDS, mt5.DefaultStaleAfter)
+		return mt5.DefaultStaleAfter
+	}
+	return time.Duration(secs) * time.Second
 }
 
 // getKucoinPairs parses KUCOIN_DEFAULT_SYMBOLS env var (format: "BTC-USDT,ETH-USDT")

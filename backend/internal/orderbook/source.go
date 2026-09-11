@@ -43,6 +43,7 @@ const (
 	PriceSourceKucoin  PriceSourceName = "kucoin"
 	PriceSourceEcoGold PriceSourceName = "ecogold"
 	PriceSourceNobitex PriceSourceName = "nobitex"
+	PriceSourceMT5     PriceSourceName = "mt5"
 )
 
 // String returns the string value of the price source

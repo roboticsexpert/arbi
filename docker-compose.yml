@@ -1,6 +1,6 @@
 services:
   web:
-    image: ${IMAGE_BASE}
+    image: ${BACKEND_IMAGE_BASE}
     ports:
       - "13254:8080"
     environment:
@@ -8,6 +8,25 @@ services:
       PROXY_URI: ${PROXY_URI}
       ECOGOLD_TOKEN: ${ECOGOLD_TOKEN}
       ECOGOLD_PASSWORD: ${ECOGOLD_PASSWORD}
+      DASHBOARD_TOKEN: ${DASHBOARD_TOKEN}
+      DASHBOARD_ORIGINS: ${DASHBOARD_ORIGINS}
+      # Without this the /api/mt5/ticks route is not registered at all, so the
+      # MetaTrader feed silently 404s.
+      MT5_INGEST_TOKEN: ${MT5_INGEST_TOKEN}
+      MT5_STALE_SECONDS: ${MT5_STALE_SECONDS}
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+      update_config:
+        order: start-first
+
+  dashboard:
+    image: ${FRONTEND_IMAGE_BASE}
+    ports:
+      - "13255:8080"
+    environment:
+      API_URL: ${DASHBOARD_API_URL}
     deploy:
       replicas: 1
       restart_policy:

@@ -1,36 +1,38 @@
+# Secrets
 .env
-arbi
+.env.local
 
-# Binaries for programs and plugins
+# Build output
+backend/arbi
+bin/
+dist/
+frontend/dist/
+
+# Go
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
-
-# Test binary, built with `go test -c`
 *.test
-
-# Output of the go coverage tool
 *.out
-
-# Dependency directories
 vendor/
-
-# Go workspace file
 go.work
 
-# Build output
-bin/
-dist/
+# Node
+node_modules/
+.vite/
+*.log
 
-# IDE specific files
+# IDE
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
 
-# OS specific files
+# OS
 .DS_Store
 
+# TypeScript incremental build cache
+*.tsbuildinfo

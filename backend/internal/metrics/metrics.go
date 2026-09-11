@@ -125,6 +125,7 @@ func ResetArbitrageMetrics() {
 
 // UpdateWalletBalanceMetrics updates wallet balance metrics for an exchange
 func UpdateWalletBalanceMetrics(exchange string, balances map[string]float64) {
+	storeBalanceSnapshot(exchange, balances)
 	for currency, balance := range balances {
 		WalletBalance.WithLabelValues(exchange, currency).Set(balance)
 	}

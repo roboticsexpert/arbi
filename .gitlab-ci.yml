@@ -4,30 +4,44 @@ stages:
 
 variables:
   DOCKER_BUILDKIT: 1
-  IMAGE_BASE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
-  IMAGE_BRANCH: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
-  IMAGE_MAIN: $CI_REGISTRY_IMAGE:main
+  BACKEND_IMAGE_BASE: $CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHORT_SHA
+  BACKEND_IMAGE_BRANCH: $CI_REGISTRY_IMAGE/backend:$CI_COMMIT_REF_SLUG
+  BACKEND_IMAGE_MAIN: $CI_REGISTRY_IMAGE/backend:main
+  FRONTEND_IMAGE_BASE: $CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_SHORT_SHA
+  FRONTEND_IMAGE_BRANCH: $CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_REF_SLUG
+  FRONTEND_IMAGE_MAIN: $CI_REGISTRY_IMAGE/frontend:main
 
-
-
-build:
+build:backend:
   needs: [ ]
   interruptible: true
   stage: build
   script:
     - echo "$CI_JOB_TOKEN" | docker login --username "$CI_REGISTRY_USER" "$CI_REGISTRY" --password-stdin
-    - docker pull $IMAGE_BRANCH || true
-    - docker pull $IMAGE_MAIN || true
-    - docker build --build-arg PROXY_URI="${PROXY_URI}" --build-arg BUILDKIT_INLINE_CACHE=1 --cache-from $IMAGE_BRANCH --cache-from $IMAGE_MAIN -t $IMAGE_BASE -t $IMAGE_BRANCH . -f Dockerfile
-    - docker push $IMAGE_BASE
-    - docker push $IMAGE_BRANCH
+    - docker pull $BACKEND_IMAGE_BRANCH || true
+    - docker pull $BACKEND_IMAGE_MAIN || true
+    - docker build --build-arg PROXY_URI="${PROXY_URI}" --build-arg BUILDKIT_INLINE_CACHE=1 --cache-from $BACKEND_IMAGE_BRANCH --cache-from $BACKEND_IMAGE_MAIN -t $BACKEND_IMAGE_BASE -t $BACKEND_IMAGE_BRANCH backend -f backend/Dockerfile
+    - docker push $BACKEND_IMAGE_BASE
+    - docker push $BACKEND_IMAGE_BRANCH
   only:
     - main
 
+build:frontend:
+  needs: [ ]
+  interruptible: true
+  stage: build
+  script:
+    - echo "$CI_JOB_TOKEN" | docker login --username "$CI_REGISTRY_USER" "$CI_REGISTRY" --password-stdin
+    - docker pull $FRONTEND_IMAGE_BRANCH || true
+    - docker pull $FRONTEND_IMAGE_MAIN || true
+    - docker build --build-arg BUILDKIT_INLINE_CACHE=1 --cache-from $FRONTEND_IMAGE_BRANCH --cache-from $FRONTEND_IMAGE_MAIN -t $FRONTEND_IMAGE_BASE -t $FRONTEND_IMAGE_BRANCH frontend -f frontend/Dockerfile
+    - docker push $FRONTEND_IMAGE_BASE
+    - docker push $FRONTEND_IMAGE_BRANCH
+  only:
+    - main
 
 deploy:production:
   interruptible: true
-  needs: [ "build"]
+  needs: [ "build:backend", "build:frontend" ]
   stage: deploy
   script:
     - echo "$CI_DEPLOY_PASSWORD" | docker login --username "$CI_DEPLOY_USER" "$CI_REGISTRY" --password-stdin
@@ -38,4 +52,3 @@ deploy:production:
     - main
   environment:
     name: Production
-

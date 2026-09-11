@@ -39,6 +39,10 @@ func NewClient() *Client {
 	// Set HTTP transport options
 	httpOption := types.NewTransportOptionBuilder().
 		SetProxy(func(r *http.Request) (*url.URL, error) {
+			// No proxy configured (e.g. running outside Iran) - connect directly.
+			if config.PROXY_URI == "" {
+				return nil, nil
+			}
 			return url.Parse(config.PROXY_URI)
 		}).
 		Build()
