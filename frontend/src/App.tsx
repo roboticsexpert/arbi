@@ -9,6 +9,7 @@ import {
 } from './lib/api'
 import { ageSeconds, formatAge, formatClock } from './lib/format'
 import { ArbitrageChains } from './components/ArbitrageChains'
+import { Backtest } from './components/Backtest'
 import { ChainHistory } from './components/ChainHistory'
 import { pairChains } from './lib/pairs'
 import { Balances } from './components/Balances'
@@ -246,6 +247,7 @@ export default function App() {
             onSelect={setHistoryKey}
             panelRef={historyRef}
           />
+          <Backtest />
           <Orderbooks books={books} now={now} />
         </div>
         <div className="space-y-4">

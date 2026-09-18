@@ -192,3 +192,96 @@ export async function checkHealth(): Promise<boolean> {
     return false
   }
 }
+
+// ---- Backtest ----
+//
+// Replays recorded history as positions. See docs/backtest.md. The request is
+// expensive (it reads the whole range at bucket resolution), so the dashboard
+// asks for summaries only and fetches a single route's trade list on demand.
+
+export interface BacktestParams {
+  target_percent: number
+  min_entry_percent: number
+  max_hold_days: number
+  capital_mult: number
+  carry_per_day_percent: number
+  transfer_percent: number
+  profit_share_per_day_percent: number
+  fees: Record<string, number>
+}
+
+export type BacktestOutcome = 'target' | 'timeout' | 'still_open' | 'no_exit_data'
+
+export interface BacktestTrade {
+  entry_t: number
+  exit_t: number
+  hold_days: number
+  entry_percent: number
+  exit_percent: number
+  round_trip_percent: number
+  net_roe_percent: number
+  outcome: BacktestOutcome
+}
+
+export interface BacktestPair {
+  path: string
+  reverse_path: string
+  entries: number
+  exits: number
+  timeouts: number
+  no_exit_data: number
+  still_open: number
+  net_total_percent: number
+  net_avg_percent: number
+  win_rate_percent: number
+  avg_hold_days: number
+  best_percent: number
+  worst_percent: number
+  trades: BacktestTrade[] | null
+}
+
+export interface BacktestResult {
+  params: BacktestParams
+  from: number
+  to: number
+  step: number // minutes
+  pairs: BacktestPair[]
+  entries: number
+  exits: number
+  timeouts: number
+  no_exit_data: number
+  still_open: number
+  net_total_percent: number
+  net_avg_percent: number
+  win_rate_percent: number
+}
+
+export interface BacktestQuery {
+  from: number
+  to: number
+  minEntry: number
+  target: number
+  maxHoldDays: number
+  capitalMult: number
+  carryPerDay: number
+  profitSharePerDay: number
+  /** Omit for every route; set to pull one route's trade list. */
+  path?: string
+  trades?: boolean
+}
+
+export function fetchBacktest(q: BacktestQuery, signal?: AbortSignal) {
+  const params = new URLSearchParams({
+    from: String(q.from),
+    to: String(q.to),
+    min_entry: String(q.minEntry),
+    target: String(q.target),
+    max_hold_days: String(q.maxHoldDays),
+    capital_mult: String(q.capitalMult),
+    carry_per_day: String(q.carryPerDay),
+    profit_share_per_day: String(q.profitSharePerDay),
+    trades: String(q.trades ?? false),
+  })
+  if (q.path) params.append('path', q.path)
+  return getHistory<BacktestResult>(`/backtest?${params}`, signal)
+}

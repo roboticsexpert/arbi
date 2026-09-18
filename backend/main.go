@@ -13,6 +13,7 @@ import (
 	"strconv"
 
 	"arbi/internal/arbitrage"
+	"arbi/internal/backtest"
 	"arbi/internal/config"
 	"arbi/internal/history"
 	"arbi/internal/httpx"
@@ -130,6 +131,7 @@ func main() {
 	api.GET("/overview", getOverview)
 	api.GET("/history/paths", getHistoryPaths)
 	api.GET("/history", getHistory)
+	api.GET("/backtest", getBacktest)
 
 	// MetaTrader 5 tick ingest. This is the only write endpoint, so it is
 	// registered only when a token is configured - an open ingest would let
@@ -538,4 +540,149 @@ func updateMetrics(ob *orderbook.OrderBook) {
 		askPrice,
 		ob.UpdatedAt.Unix(),
 	)
+}
+
+// maxBacktestTrades caps the trade list returned per pair. The summary counts
+// are always complete; only the per-trade detail is truncated.
+const maxBacktestTrades = 200
+
+// backtestParams reads the cost model from the query string, falling back to
+// the documented Structure A defaults for anything not supplied.
+func backtestParams(c *gin.Context) backtest.Params {
+	p := backtest.DefaultParams()
+	floatArg := func(name string, into *float64) {
+		if v, err := strconv.ParseFloat(c.Query(name), 64); err == nil {
+			*into = v
+		}
+	}
+	floatArg("target", &p.TargetPercent)
+	floatArg("min_entry", &p.MinEntryPercent)
+	floatArg("max_hold_days", &p.MaxHoldDays)
+	floatArg("capital_mult", &p.CapitalMult)
+	floatArg("carry_per_day", &p.CarryPerDayPercent)
+	floatArg("transfer", &p.TransferPercent)
+	floatArg("profit_share_per_day", &p.ProfitSharePerDayPercent)
+
+	// fee=venue:fraction, repeatable, e.g. fee=nobitex:0.0025
+	for _, spec := range c.QueryArray("fee") {
+		venue, rate, ok := strings.Cut(spec, ":")
+		if !ok {
+			continue
+		}
+		if v, err := strconv.ParseFloat(rate, 64); err == nil {
+			p.Fees[venue] = v
+		}
+	}
+	return p
+}
+
+// getBacktest godoc
+// @Summary Replay recorded history as positions
+// @Description Simulates opening a position whenever the go leg clears min_entry and closing it when the net return on equity reaches target, reporting entries, exits, timeouts and profit or loss. Costs follow docs/trade-economics.md.
+// @Tags History
+// @Produce json
+// @Param path query []string false "Chain path, repeatable; default every path with history" collectionFormat(multi)
+// @Param from query int false "Range start, unix seconds (default: 30 days ago)"
+// @Param to query int false "Range end, unix seconds (default: now)"
+// @Param step query int false "Bucket size in minutes: 1, 5, 15, 60, 240 or 1440 (default: auto)"
+// @Param target query number false "Net return on equity that closes a position, percent (default 1)"
+// @Param min_entry query number false "Go-leg profit that opens a position, percent (default 1)"
+// @Param max_hold_days query number false "Force-close after this many days (default 7)"
+// @Param capital_mult query number false "K = 1/sum(margin) (default 0.83)"
+// @Param carry_per_day query number false "Financing on notional, percent per day (default 0.15)"
+// @Param transfer query number false "One-off transfer cost per round trip, percent (default 0.04)"
+// @Param profit_share_per_day query number false "Share of profit taken per extension day, percent (default 0.5)"
+// @Param fee query []string false "Per-venue fee override as venue:fraction, repeatable" collectionFormat(multi)
+// @Param trades query bool false "Include the per-trade list (default true)"
+// @Success 200 {object} backtest.Result
+// @Failure 400 {object} map[string]string
+// @Failure 503 {object} map[string]string
+// @Router /backtest [get]
+func getBacktest(c *gin.Context) {
+	if History == nil {
+		c.JSON(503, gin.H{"error": "history is disabled"})
+		return
+	}
+
+	to := time.Now()
+	if v, err := strconv.ParseInt(c.Query("to"), 10, 64); err == nil {
+		to = time.Unix(v, 0)
+	}
+	from := to.Add(-30 * 24 * time.Hour)
+	if v, err := strconv.ParseInt(c.Query("from"), 10, 64); err == nil {
+		from = time.Unix(v, 0)
+	}
+	if !from.Before(to) {
+		c.JSON(400, gin.H{"error": "from must be before to"})
+		return
+	}
+
+	step := history.AutoStep(from, to)
+	if v, err := strconv.Atoi(c.Query("step")); err == nil {
+		if !slices.Contains(history.Steps, v) {
+			c.JSON(400, gin.H{"error": "step must be one of 1, 5, 15, 60, 240, 1440"})
+			return
+		}
+		step = v
+	}
+
+	// A pair needs both directions, so whatever the caller asks for is widened
+	// to include each path's reverse.
+	paths := c.QueryArray("path")
+	if len(paths) == 0 {
+		infos, err := History.Paths()
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		for _, info := range infos {
+			paths = append(paths, info.Path)
+		}
+	}
+	wanted := make(map[string]bool, len(paths)*2)
+	for _, p := range paths {
+		wanted[p] = true
+		wanted[arbitrage.ReversePath(p)] = true
+	}
+	if len(wanted) == 0 {
+		c.JSON(200, backtest.Run(nil, from.Unix(), to.Unix(), backtestParams(c)))
+		return
+	}
+	all := make([]string, 0, len(wanted))
+	for p := range wanted {
+		all = append(all, p)
+	}
+	sort.Strings(all)
+
+	series, err := History.Series(all, from, to, step)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	samples := make(map[string][]backtest.Sample, len(series))
+	for path, points := range series {
+		s := make([]backtest.Sample, len(points))
+		for i, pt := range points {
+			s[i] = backtest.Sample{T: pt.T, NoFeePercent: pt.AvgNoFee}
+		}
+		samples[path] = s
+	}
+
+	result := backtest.Run(samples, from.Unix(), to.Unix(), backtestParams(c))
+	result.Step = step
+
+	if c.Query("trades") == "false" {
+		for i := range result.Pairs {
+			result.Pairs[i].Trades = nil
+		}
+	} else {
+		for i := range result.Pairs {
+			if len(result.Pairs[i].Trades) > maxBacktestTrades {
+				result.Pairs[i].Trades = result.Pairs[i].Trades[:maxBacktestTrades]
+			}
+		}
+	}
+
+	c.JSON(200, result)
 }

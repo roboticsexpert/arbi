@@ -90,6 +90,132 @@ const docTemplate = `{
                 }
             }
         },
+        "/backtest": {
+            "get": {
+                "description": "Simulates opening a position whenever the go leg clears min_entry and closing it when the net return on equity reaches target, reporting entries, exits, timeouts and profit or loss. Costs follow docs/trade-economics.md.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "History"
+                ],
+                "summary": "Replay recorded history as positions",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Chain path, repeatable; default every path with history",
+                        "name": "path",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Range start, unix seconds (default: 30 days ago)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Range end, unix seconds (default: now)",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Bucket size in minutes: 1, 5, 15, 60, 240 or 1440 (default: auto)",
+                        "name": "step",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Net return on equity that closes a position, percent (default 1)",
+                        "name": "target",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Go-leg profit that opens a position, percent (default 1)",
+                        "name": "min_entry",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Force-close after this many days (default 7)",
+                        "name": "max_hold_days",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "K = 1/sum(margin) (default 0.83)",
+                        "name": "capital_mult",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Financing on notional, percent per day (default 0.15)",
+                        "name": "carry_per_day",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "One-off transfer cost per round trip, percent (default 0.04)",
+                        "name": "transfer",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Share of profit taken per extension day, percent (default 0.5)",
+                        "name": "profit_share_per_day",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Per-venue fee override as venue:fraction, repeatable",
+                        "name": "fee",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Include the per-trade list (default true)",
+                        "name": "trades",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/backtest.Result"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/balances": {
             "get": {
                 "description": "Returns the latest wallet balances per price source",
@@ -500,6 +626,184 @@ const docTemplate = `{
                 },
                 "volume": {
                     "description": "volume in quote currency",
+                    "type": "number"
+                }
+            }
+        },
+        "backtest.PairResult": {
+            "type": "object",
+            "properties": {
+                "avg_hold_days": {
+                    "type": "number"
+                },
+                "best_percent": {
+                    "type": "number"
+                },
+                "entries": {
+                    "description": "signals acted on",
+                    "type": "integer"
+                },
+                "exits": {
+                    "description": "reached the target",
+                    "type": "integer"
+                },
+                "net_avg_percent": {
+                    "type": "number"
+                },
+                "net_total_percent": {
+                    "description": "sum of ROE over all closed trades",
+                    "type": "number"
+                },
+                "no_exit_data": {
+                    "type": "integer"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "reverse_path": {
+                    "type": "string"
+                },
+                "still_open": {
+                    "description": "window runs past the end of the data",
+                    "type": "integer"
+                },
+                "timeouts": {
+                    "description": "force-closed at MaxHoldDays",
+                    "type": "integer"
+                },
+                "trades": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/backtest.Trade"
+                    }
+                },
+                "win_rate_percent": {
+                    "description": "share of closed trades with ROE \u003e 0",
+                    "type": "number"
+                },
+                "worst_percent": {
+                    "type": "number"
+                }
+            }
+        },
+        "backtest.Params": {
+            "type": "object",
+            "properties": {
+                "capital_mult": {
+                    "description": "CapitalMult is K = 1/Σmᵢ, the notional-to-equity ratio.",
+                    "type": "number"
+                },
+                "carry_per_day_percent": {
+                    "description": "CarryPerDayPercent is Σcᵢ: financing on the whole notional, per day.",
+                    "type": "number"
+                },
+                "fees": {
+                    "description": "Fees maps a venue token to its per-hop trading fee as a fraction.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "number",
+                        "format": "float64"
+                    }
+                },
+                "max_hold_days": {
+                    "description": "MaxHoldDays is how long a position may stay open before it is force-closed\nat whatever the return leg is worth.",
+                    "type": "number"
+                },
+                "min_entry_percent": {
+                    "description": "MinEntryPercent is the go-leg profit (after fees) that opens a position.",
+                    "type": "number"
+                },
+                "profit_share_per_day_percent": {
+                    "description": "ProfitSharePerDayPercent is taken out of a *profitable* position's return\nfor every day past the first (Nobitex charges 0.5%).",
+                    "type": "number"
+                },
+                "target_percent": {
+                    "description": "TargetPercent is the net return on equity a position must reach before it\nis closed.",
+                    "type": "number"
+                },
+                "transfer_percent": {
+                    "description": "TransferPercent is the one-off cost of moving capital, per round trip.",
+                    "type": "number"
+                }
+            }
+        },
+        "backtest.Result": {
+            "type": "object",
+            "properties": {
+                "entries": {
+                    "type": "integer"
+                },
+                "exits": {
+                    "type": "integer"
+                },
+                "from": {
+                    "type": "integer"
+                },
+                "net_avg_percent": {
+                    "type": "number"
+                },
+                "net_total_percent": {
+                    "type": "number"
+                },
+                "no_exit_data": {
+                    "type": "integer"
+                },
+                "pairs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/backtest.PairResult"
+                    }
+                },
+                "params": {
+                    "$ref": "#/definitions/backtest.Params"
+                },
+                "step": {
+                    "description": "Step is the bucket size in minutes the samples were read at. A backtest\ncan only see the spread at this resolution, so it bounds how precisely an\nexit can be timed.",
+                    "type": "integer"
+                },
+                "still_open": {
+                    "type": "integer"
+                },
+                "timeouts": {
+                    "type": "integer"
+                },
+                "to": {
+                    "type": "integer"
+                },
+                "win_rate_percent": {
+                    "type": "number"
+                }
+            }
+        },
+        "backtest.Trade": {
+            "type": "object",
+            "properties": {
+                "entry_percent": {
+                    "description": "go leg, after fees",
+                    "type": "number"
+                },
+                "entry_t": {
+                    "type": "integer"
+                },
+                "exit_percent": {
+                    "description": "return leg, after fees",
+                    "type": "number"
+                },
+                "exit_t": {
+                    "type": "integer"
+                },
+                "hold_days": {
+                    "type": "number"
+                },
+                "net_roe_percent": {
+                    "description": "after carry, transfer, profit share",
+                    "type": "number"
+                },
+                "outcome": {
+                    "type": "string"
+                },
+                "round_trip_percent": {
+                    "description": "the two legs compounded",
                     "type": "number"
                 }
             }

@@ -7,7 +7,8 @@ Arbi/
 ├── backend/            Go service: price sources, arbitrage finder, REST API
 │   ├── main.go         routes + handlers
 │   ├── internal/
-│   │   ├── arbitrage/  chain finder and calculator
+│   │   ├── arbitrage/  chain finder, calculator, path helpers
+│   │   ├── backtest/   replays history as positions (cost model + engine)
 │   │   ├── config/     env loading (.env is defaults only, real env wins)
 │   │   ├── history/    per-minute chain profit log (SQLite)
 │   │   ├── httpx/      CORS + dashboard token gate
@@ -45,6 +46,7 @@ Arbi/
 | `GET /balances` | token | wallet balances per source |
 | `GET /history/paths` | token | chain paths with recorded history |
 | `GET /history?path=…&path=…` | token | profit % per path in minute buckets — see [chain-history.md](chain-history.md) |
+| `GET /backtest` | token | replays history as positions: entries, exits, P&L — see [backtest.md](backtest.md) |
 
 `/overview` exists so the dashboard makes one request per poll instead of four.
 
@@ -99,6 +101,10 @@ unchanged and still returns a flat list.
   needed side) is still shown, with that row marked not available.
 - Each expanded card has a **History chart** button that selects the pair in
   the Chain history panel.
+
+The **Backtest** panel below the history chart replays those same recorded
+series as positions — entries, exits, and profit or loss under a chosen cost
+structure. See [backtest.md](backtest.md).
 - Pairs are sorted by their best leg's profit. The header tile counts pairs.
 
 The API base URL is **not** baked into the bundle. `docker-entrypoint.sh` writes

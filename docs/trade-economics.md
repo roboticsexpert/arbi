@@ -299,10 +299,14 @@ Not yet applied:
 4. Add per-venue carry (`% per day`), margin (`mᵢ`) and profit-share tables,
    config-driven and defaulting to zero so nothing changes until they are set.
 5. Compute `RT_req(D)` and `r_req` per pair for `D ∈ {1, 7}`; expose on
-   `/arbitrage` and `/overview`.
+   `/arbitrage` and `/overview`. `Params.RequiredRoundTripPercent` in
+   `internal/backtest` already implements the formula.
 6. Dashboard: show *"close when Return ≥ x%"* on a pair, and flag pairs whose
    recorded history (`/history`) shows the spread actually reverting that far
    within seven days. A threshold nothing ever reaches is not a trade.
 
 Step 6 is what turns the existing history table from a chart into an entry
-filter.
+filter. Items 4 and 5 already exist inside `internal/backtest` — see
+[backtest.md](backtest.md), which replays this cost model over recorded history
+and reports how many positions could have been entered, closed, and at what
+profit or loss. Moving them into the live finder is what remains.

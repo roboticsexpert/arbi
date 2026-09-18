@@ -36,6 +36,8 @@ API is open.
 - [docs/chain-history.md](docs/chain-history.md) — per-minute profit history
 - [docs/trade-economics.md](docs/trade-economics.md) — cost of holding a chain
   1–7 days, and the spread reversion needed to clear a target
+- [docs/backtest.md](docs/backtest.md) — replaying that history as positions:
+  how many entries, how many closed, and what each made or lost
 
 ## Deployment
 
