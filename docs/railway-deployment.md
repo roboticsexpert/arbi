@@ -19,20 +19,22 @@ Dashboard: https://railway.com/project/2093829c-d63e-45b0-aa1c-edd8eb0d5665
 
 ## How it deploys
 
-Both services are pushed from a working copy with `railway up`. Neither service
-has a repo source (`source: null` in `railway environment config`).
+**Push to `main` on GitHub and both services rebuild themselves.** Enabled
+2026-09-18; before that both were pushed by hand with `railway up` and neither
+service had a repo source, so a push deployed nothing.
 
-### GitHub auto-deploy (not yet enabled)
+### GitHub auto-deploy
 
-Since 2026-09-11 the git remote is GitHub, `github.com/roboticsexpert/arbi`
-(**public**; history scanned for committed secrets — none, and
-`backend/.env.production` holds only symbol lists). Previously it was
-self-hosted GitLab, which is why auto-deploy was never set up.
+The remote is GitHub, `github.com/roboticsexpert/arbi` (**public**; history
+scanned for committed secrets — none, and `backend/.env.production` holds only
+symbol lists). It was self-hosted GitLab until 2026-09-11, which is why
+auto-deploy went unconfigured for so long. **`.gitlab-ci.yml` and
+`docker-compose.yml` are legacy** — GitHub does not run them, and nothing
+deploys the Swarm stack any more.
 
 Railway only auto-deploys when a project member has a **connected GitHub
 account with contributor access** — a public repo alone is not enough. The
-account owner confirmed on 2026-09-11 that the Railway GitHub App has access to
-all repos.
+Railway GitHub App has access to all repos on this account.
 
 > An earlier note here claimed the account had no GitHub connection. That was
 > wrong: the skill's `railway-api.sh` helper reads `.user.token` from
@@ -41,7 +43,7 @@ all repos.
 > `Not Authorized` on `githubRepos`, so repo visibility cannot be checked from
 > the API with it — only by connecting.
 
-Each service needs:
+What each service is set to:
 
 | | `arbi` | `arbi-dashboard` |
 |---|---|---|
@@ -59,9 +61,15 @@ service falls back to the `RAILPACK` builder and the backend loses its `/up`
 health check. Watch paths stop a frontend-only push from rebuilding the backend
 (which would also empty the in-memory order books).
 
-Set the root directory and build settings **before** `railway service source
-connect`, since connecting creates the deploy trigger and the first build would
-otherwise use the wrong builder.
+Set the root directory and build settings **before** connecting the source,
+since connecting creates the deploy trigger and immediately starts a build —
+which would otherwise use the wrong builder. This is the order that was used on
+2026-09-18, and it is the order to repeat if a service is ever recreated.
+
+### Deploying by hand
+
+`railway up` still works and is the way to ship a working copy that is not
+committed, or to recover when a GitHub build cannot be triggered.
 
 **Each service directory is linked to its own Railway service.** This matters:
 `railway up` uploads the *linked directory*, not the current one. With only the

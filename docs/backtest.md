@@ -140,6 +140,7 @@ fills.
 
 ## In the dashboard
 
+Live at <https://arbi-dashboard-production.up.railway.app> (token required).
 The **Backtest** panel sits under Chain history in
 [`Backtest.tsx`](../frontend/src/components/Backtest.tsx). Controls are range
 (7D/30D), hold limit (1/3/7 days), entry and target thresholds, and a structure
