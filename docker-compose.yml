@@ -14,6 +14,10 @@ services:
       # MetaTrader feed silently 404s.
       MT5_INGEST_TOKEN: ${MT5_INGEST_TOKEN}
       MT5_STALE_SECONDS: ${MT5_STALE_SECONDS}
+      HISTORY_RETENTION_DAYS: ${HISTORY_RETENTION_DAYS}
+    volumes:
+      # Chain history (SQLite). Without the volume every redeploy starts empty.
+      - arbi-history:/home/appuser/data
     deploy:
       replicas: 1
       restart_policy:
@@ -33,3 +37,6 @@ services:
         condition: any
       update_config:
         order: start-first
+
+volumes:
+  arbi-history:

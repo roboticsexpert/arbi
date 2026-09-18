@@ -23,6 +23,8 @@ var (
 	DASHBOARD_ORIGINS       string
 	MT5_INGEST_TOKEN        string
 	MT5_STALE_SECONDS       string
+	HISTORY_DB_PATH         string
+	HISTORY_RETENTION_DAYS  string
 )
 
 func init() {
@@ -51,4 +53,6 @@ func init() {
 	DASHBOARD_ORIGINS = os.Getenv("DASHBOARD_ORIGINS")
 	MT5_INGEST_TOKEN = os.Getenv("MT5_INGEST_TOKEN")
 	MT5_STALE_SECONDS = os.Getenv("MT5_STALE_SECONDS")
+	HISTORY_DB_PATH = os.Getenv("HISTORY_DB_PATH")
+	HISTORY_RETENTION_DAYS = os.Getenv("HISTORY_RETENTION_DAYS")
 }

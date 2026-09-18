@@ -19,8 +19,49 @@ Dashboard: https://railway.com/project/2093829c-d63e-45b0-aa1c-edd8eb0d5665
 
 ## How it deploys
 
-The git remote is self-hosted GitLab (`gitlab.zisef.ir`), so Railway's GitHub
-integration is not available. Both services are pushed from a working copy.
+Both services are pushed from a working copy with `railway up`. Neither service
+has a repo source (`source: null` in `railway environment config`).
+
+### GitHub auto-deploy (not yet enabled)
+
+Since 2026-09-11 the git remote is GitHub, `github.com/roboticsexpert/arbi`
+(**public**; history scanned for committed secrets — none, and
+`backend/.env.production` holds only symbol lists). Previously it was
+self-hosted GitLab, which is why auto-deploy was never set up.
+
+Railway only auto-deploys when a project member has a **connected GitHub
+account with contributor access** — a public repo alone is not enough. The
+account owner confirmed on 2026-09-11 that the Railway GitHub App has access to
+all repos.
+
+> An earlier note here claimed the account had no GitHub connection. That was
+> wrong: the skill's `railway-api.sh` helper reads `.user.token` from
+> `~/.railway/config.json`, but CLI 5.52 stores `.user.accessToken`, so every
+> query failed and the failure was masked. The CLI token also gets
+> `Not Authorized` on `githubRepos`, so repo visibility cannot be checked from
+> the API with it — only by connecting.
+
+Each service needs:
+
+| | `arbi` | `arbi-dashboard` |
+|---|---|---|
+| Repo / branch | `roboticsexpert/arbi` / `main` | same |
+| Root directory | `/backend` | `/frontend` |
+| Builder | Dockerfile (`Dockerfile`) | Dockerfile (`Dockerfile`) |
+| Health check | `/up`, 60s | none |
+| Watch paths | `/backend/**` | `/frontend/**` |
+
+The build settings must be set **on the service**, not via a config file path:
+as of 2026-09-11 Railway rejects `railwayConfigFile` with *"Config as Code
+(railway.json / railway.toml) is deprecated. Use Infrastructure as Code
+(.railway/railway.ts) instead."* Without explicit settings a repo-connected
+service falls back to the `RAILPACK` builder and the backend loses its `/up`
+health check. Watch paths stop a frontend-only push from rebuilding the backend
+(which would also empty the in-memory order books).
+
+Set the root directory and build settings **before** `railway service source
+connect`, since connecting creates the deploy trigger and the first build would
+otherwise use the wrong builder.
 
 **Each service directory is linked to its own Railway service.** This matters:
 `railway up` uploads the *linked directory*, not the current one. With only the
@@ -164,3 +205,28 @@ too**, so this is not caused by the deployment:
 Balance metrics (`UpdateWalletBalanceMetrics`) are therefore empty everywhere.
 Refresh both tokens, update `.env`, then re-push with
 `railway variable set KEY=value --service arbi`.
+
+## Chain history volume
+
+The backend logs chain profit history to SQLite at
+`/home/appuser/data/history.db` — see [chain-history.md](chain-history.md).
+
+| | |
+|---|---|
+| Volume | `arbi-volume` — `106c2ede-583a-4e7c-97e1-4ee8a2d50e88`, 50 GB |
+| Mount path | `/home/appuser/data` on `arbi` |
+| Variable | `RAILWAY_RUN_UID=0` — the volume is root-owned and the image runs as `appuser` |
+
+Added 2026-09-13 14:49 UTC. History recorded before that (14:25–14:49, on the
+container's ephemeral disk) was lost when the volume was mounted.
+
+CLI gotchas (5.52): `--service` goes on `railway volume`, not on the
+subcommand, and takes the service **ID**; file commands need `--volume` before
+the subcommand:
+
+```bash
+railway volume --service 3001fa77-af3e-4184-a1fc-6d24d4e7fa17 list --json
+railway volume --service 3001fa77-af3e-4184-a1fc-6d24d4e7fa17 files --volume arbi-volume list / --json
+```
+
+Back up the database with `railway volume … files --volume arbi-volume download /history.db`.

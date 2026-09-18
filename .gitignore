@@ -36,3 +36,6 @@ node_modules/
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+# Chain history database (local runs)
+backend/data/

@@ -24,3 +24,6 @@ Thumbs.db
 Dockerfile
 .dockerignore
 docker-compose.yml
+
+# Chain history database (local runs)
+data/

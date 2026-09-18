@@ -37,6 +37,10 @@ WORKDIR /home/appuser
 COPY --from=builder /app/arbi .
 COPY .env.production .env
 
+# Chain history database (HISTORY_DB_PATH defaults to data/history.db). Created
+# here so a Docker named volume mounted on it inherits appuser ownership.
+RUN mkdir -p /home/appuser/data
+
 # Change ownership
 RUN chown -R appuser:appuser /home/appuser
 

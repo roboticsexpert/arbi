@@ -134,6 +134,56 @@ export function fetchOverview(signal?: AbortSignal) {
   return get<Overview>('/overview', signal)
 }
 
+// ---- Chain history ----
+
+export class HistoryDisabledError extends Error {
+  constructor() {
+    super('history is disabled on the backend')
+  }
+}
+
+export interface HistoryPathInfo {
+  path: string
+  first_seen: number
+  last_seen: number
+}
+
+export interface HistoryPoint {
+  t: number // unix seconds, bucket start
+  avg: number
+  min: number
+  max: number
+  last: number
+  avg_no_fee: number
+  samples: number
+}
+
+export interface HistoryResponse {
+  from: number
+  to: number
+  step: number // minutes
+  series: Record<string, HistoryPoint[]>
+}
+
+async function getHistory<T>(path: string, signal?: AbortSignal): Promise<T> {
+  try {
+    return await get<T>(path, signal)
+  } catch (e) {
+    if (e instanceof Error && e.message.endsWith(': 503')) throw new HistoryDisabledError()
+    throw e
+  }
+}
+
+export function fetchHistoryPaths(signal?: AbortSignal) {
+  return getHistory<HistoryPathInfo[]>('/history/paths', signal)
+}
+
+export function fetchHistory(paths: string[], from: number, to: number, signal?: AbortSignal) {
+  const q = new URLSearchParams({ from: String(from), to: String(to) })
+  for (const p of paths) q.append('path', p)
+  return getHistory<HistoryResponse>(`/history?${q}`, signal)
+}
+
 export async function checkHealth(): Promise<boolean> {
   try {
     const res = await fetch(`${apiBaseUrl()}/up`)

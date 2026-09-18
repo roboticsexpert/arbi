@@ -48,6 +48,7 @@ type Finder struct {
 	targetCurrency  string
 	maxDepth        int // Maximum chain length
 	lastChains      []ArbitrageChain
+	onChains        []func(at time.Time, chains []ArbitrageChain)
 	mu              sync.RWMutex
 	stopCh          chan struct{}
 }
@@ -125,8 +126,16 @@ func (f *Finder) Stop() {
 	close(f.stopCh)
 }
 
+// OnChains registers a callback run after every finder pass, including passes
+// that found nothing. Register before Start; callbacks run on the finder's
+// goroutine, so they must be quick.
+func (f *Finder) OnChains(fn func(at time.Time, chains []ArbitrageChain)) {
+	f.onChains = append(f.onChains, fn)
+}
+
 // FindAndPrint finds all arbitrage chains and prints them
 func (f *Finder) FindAndPrint() {
+	at := time.Now()
 	chains := f.FindAllChains()
 
 	// Sort by profit percentage (descending)
@@ -138,6 +147,10 @@ func (f *Finder) FindAndPrint() {
 	f.mu.Lock()
 	f.lastChains = chains
 	f.mu.Unlock()
+
+	for _, fn := range f.onChains {
+		fn(at, chains)
+	}
 
 	// Update Prometheus metrics
 	metrics.ResetArbitrageMetrics()

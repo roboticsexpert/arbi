@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"slices"
 	"sort"
 	"strings"
 	"syscall"
@@ -13,6 +14,7 @@ import (
 
 	"arbi/internal/arbitrage"
 	"arbi/internal/config"
+	"arbi/internal/history"
 	"arbi/internal/httpx"
 	"arbi/internal/metrics"
 	"arbi/internal/orderbook"
@@ -34,6 +36,10 @@ var OrderBookStore *orderbook.Store
 
 // Global arbitrage finder
 var ArbFinder *arbitrage.Finder
+
+// Chain history recorder. nil when the database could not be opened - the
+// dashboard keeps working, only the history endpoints report unavailable.
+var History *history.Recorder
 
 // Global MetaTrader 5 source - fed by the Expert Advisor via POST /api/mt5/ticks
 var MT5Source *mt5.Source
@@ -95,6 +101,10 @@ func main() {
 
 	// Start arbitrage finder - runs every 10 seconds with 100 million IRT
 	ArbFinder = arbitrage.NewFinder(OrderBookStore, 100_000_000)
+	History = openHistory()
+	if History != nil {
+		ArbFinder.OnChains(History.Record)
+	}
 	go ArbFinder.Start(10 * time.Second)
 
 	// Setup Gin router
@@ -118,6 +128,8 @@ func main() {
 	api.GET("/arbitrage", getArbitrageChains)
 	api.GET("/balances", getBalances)
 	api.GET("/overview", getOverview)
+	api.GET("/history/paths", getHistoryPaths)
+	api.GET("/history", getHistory)
 
 	// MetaTrader 5 tick ingest. This is the only write endpoint, so it is
 	// registered only when a token is configured - an open ingest would let
@@ -137,6 +149,9 @@ func main() {
 		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 		<-sigChan
 		log.Println("Shutting down...")
+		if History != nil {
+			History.Close() // writes the partially filled minute
+		}
 		os.Exit(0)
 	}()
 
@@ -273,6 +288,110 @@ func getOverview(c *gin.Context) {
 		"orderbooks":  books,
 		"arbitrage":   chains,
 		"balances":    metrics.GetBalanceSnapshots(),
+	})
+}
+
+// openHistory opens the chain history database. A failure (typically an
+// unwritable volume) is logged and disables history rather than the service.
+func openHistory() *history.Recorder {
+	path := config.HISTORY_DB_PATH
+	if path == "" {
+		path = "data/history.db"
+	}
+	days := 30
+	if v, err := strconv.Atoi(config.HISTORY_RETENTION_DAYS); err == nil && v >= 0 {
+		days = v
+	}
+	rec, err := history.Open(path, time.Duration(days)*24*time.Hour)
+	if err != nil {
+		log.Printf("[History] disabled - cannot open %s: %v", path, err)
+		return nil
+	}
+	log.Printf("[History] recording chains to %s (retention %d days)", path, days)
+	return rec
+}
+
+// getHistoryPaths godoc
+// @Summary Chain paths with history
+// @Description Every arbitrage chain path that has recorded history, most recently seen first
+// @Tags History
+// @Produce json
+// @Success 200 {array} history.PathInfo
+// @Failure 503 {object} map[string]string
+// @Router /history/paths [get]
+func getHistoryPaths(c *gin.Context) {
+	if History == nil {
+		c.JSON(503, gin.H{"error": "history is disabled"})
+		return
+	}
+	paths, err := History.Paths()
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, paths)
+}
+
+// maxHistoryPaths bounds a single /history request.
+const maxHistoryPaths = 10
+
+// getHistory godoc
+// @Summary Chain profit history
+// @Description Profit percentage per chain path in minute buckets (or coarser for long ranges)
+// @Tags History
+// @Produce json
+// @Param path query []string true "Chain path, repeatable (max 10)" collectionFormat(multi)
+// @Param from query int false "Range start, unix seconds (default: 24h ago)"
+// @Param to query int false "Range end, unix seconds (default: now)"
+// @Param step query int false "Bucket size in minutes: 1, 5, 15, 60, 240 or 1440 (default: auto)"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]string
+// @Failure 503 {object} map[string]string
+// @Router /history [get]
+func getHistory(c *gin.Context) {
+	if History == nil {
+		c.JSON(503, gin.H{"error": "history is disabled"})
+		return
+	}
+
+	paths := c.QueryArray("path")
+	if len(paths) == 0 || len(paths) > maxHistoryPaths {
+		c.JSON(400, gin.H{"error": "pass between 1 and 10 path parameters"})
+		return
+	}
+
+	to := time.Now()
+	if v, err := strconv.ParseInt(c.Query("to"), 10, 64); err == nil {
+		to = time.Unix(v, 0)
+	}
+	from := to.Add(-24 * time.Hour)
+	if v, err := strconv.ParseInt(c.Query("from"), 10, 64); err == nil {
+		from = time.Unix(v, 0)
+	}
+	if !from.Before(to) {
+		c.JSON(400, gin.H{"error": "from must be before to"})
+		return
+	}
+
+	step := history.AutoStep(from, to)
+	if v, err := strconv.Atoi(c.Query("step")); err == nil {
+		if !slices.Contains(history.Steps, v) {
+			c.JSON(400, gin.H{"error": "step must be one of 1, 5, 15, 60, 240, 1440"})
+			return
+		}
+		step = v
+	}
+
+	series, err := History.Series(paths, from, to, step)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{
+		"from":   from.Unix(),
+		"to":     to.Unix(),
+		"step":   step,
+		"series": series,
 	})
 }
 

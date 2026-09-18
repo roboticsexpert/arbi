@@ -9,6 +9,8 @@ import {
 } from './lib/api'
 import { ageSeconds, formatAge, formatClock } from './lib/format'
 import { ArbitrageChains } from './components/ArbitrageChains'
+import { ChainHistory } from './components/ChainHistory'
+import { pairChains } from './lib/pairs'
 import { Balances } from './components/Balances'
 import { Orderbooks } from './components/Orderbooks'
 import { TokenGate } from './components/TokenGate'
@@ -106,6 +108,13 @@ export default function App() {
   }
 
   const chains = useMemo(() => data?.arbitrage ?? [], [data])
+  const pairs = useMemo(() => pairChains(chains), [chains])
+  const [historyKey, setHistoryKey] = useState<string | null>(null)
+  const historyRef = useRef<HTMLDivElement>(null)
+  const showHistory = useCallback((key: string) => {
+    setHistoryKey(key)
+    historyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [])
   const books = useMemo(() => data?.orderbooks ?? [], [data])
   const sourceStats = data?.stats.source_stats ?? {}
 
@@ -193,7 +202,11 @@ export default function App() {
           tone={bestChain ? (bestChain.profit_percent > 0 ? 'gain' : 'loss') : 'default'}
           hint={bestChain?.path}
         />
-        <StatTile label="Chains found" value={String(chains.length)} />
+        <StatTile
+          label="Route pairs"
+          value={String(pairs.length)}
+          hint={`${chains.length} chains`}
+        />
         <StatTile label="Markets" value={String(books.length)} />
         <StatTile
           label="Sources"
@@ -226,7 +239,13 @@ export default function App() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
-          <ArbitrageChains chains={chains} hasNobitex={hasNobitex} />
+          <ArbitrageChains pairs={pairs} hasNobitex={hasNobitex} onShowHistory={showHistory} />
+          <ChainHistory
+            pairs={pairs}
+            selected={historyKey}
+            onSelect={setHistoryKey}
+            panelRef={historyRef}
+          />
           <Orderbooks books={books} now={now} />
         </div>
         <div className="space-y-4">

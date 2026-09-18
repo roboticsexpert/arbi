@@ -4,3 +4,4 @@ arbi
 *.md
 .gitlab-ci.yml
 docker-compose.yml
+data/

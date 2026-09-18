@@ -203,10 +203,18 @@ reach the VPS until you synchronize again.
 
 ### State as of 2026-09-11
 
-The Railway backend is running a build **older than the MT5 source**
-(`/stats` reports 3 sources: ecogold, kucoin, nobitex) and has no
-`MT5_INGEST_TOKEN`, so `POST /api/mt5/ticks` returns 404. It needs a redeploy
-from `backend/` plus the variable before any EA can feed it.
+Earlier that day Railway was running a build older than the MT5 source and
+`POST /api/mt5/ticks` returned 404. A *Redeploy* from the Railway dashboard
+does **not** fix this — it rebuilds the last uploaded snapshot, not new code.
+
+Fixed by `railway up` from `backend/` (commit `3459ab9`) with
+`MT5_INGEST_TOKEN` set. Verified after deploy: the untokenised ingest returns
+**401** (route registered), `/stats` reports 4 sources including `mt5`.
+
+Feed confirmed live at 13:51 UTC: the EA pushes `200 POST /api/mt5/ticks`
+roughly every second from `194.61.89.84`, and the finder is closing chains
+through the MT5 leg on Railway (Nobitex happened to be reachable), e.g.
+`IRT-ecogold-GOLD18-convert-GOLD24-mt5-USD-convert-USDT-nobitex-IRT`.
 
 ## Arbitrage wiring
 

@@ -9,6 +9,7 @@ Arbi/
 │   ├── internal/
 │   │   ├── arbitrage/  chain finder and calculator
 │   │   ├── config/     env loading (.env is defaults only, real env wins)
+│   │   ├── history/    per-minute chain profit log (SQLite)
 │   │   ├── httpx/      CORS + dashboard token gate
 │   │   ├── metrics/    Prometheus gauges + balance snapshot store
 │   │   ├── orderbook/  store, types, source interface
@@ -42,6 +43,8 @@ Arbi/
 | `GET /stats` | token | store statistics |
 | `GET /arbitrage` | token | latest chains |
 | `GET /balances` | token | wallet balances per source |
+| `GET /history/paths` | token | chain paths with recorded history |
+| `GET /history?path=…&path=…` | token | profit % per path in minute buckets — see [chain-history.md](chain-history.md) |
 
 `/overview` exists so the dashboard makes one request per poll instead of four.
 
@@ -72,6 +75,31 @@ Live-ness is made visible rather than assumed:
 - per-market age with a colour change once a book is older than 60s
 - green/red flash on a best bid or ask that moved since the previous poll
 - explicit "no data from <source>" banner for a registered source with 0 books
+
+### Chains are shown as Go / Return pairs
+
+The finder's DFS emits both directions of every loop as separate chains. A
+position is opened along one direction and closed along the other, so the
+dashboard groups them (`frontend/src/lib/pairs.ts`); the backend API is
+unchanged and still returns a flat list.
+
+- **Matching** uses the `path` string. Paths alternate asset and venue
+  (`IRT-ecogold-GOLD18-convert-PAXG-kucoin-USDT-nobitex-IRT`) and asset symbols
+  never contain `-`, so reversing the tokens gives exactly the reverse route's
+  path. The same rule pairs live chains and paths that only exist in history,
+  which is why it is path-based rather than step-based.
+- **Which leg is "Go"** is fixed by the route (lexicographically smaller path),
+  not by which leg is currently better, so labels don't swap between polls and
+  the chain cards and the history chart always agree. The currently better leg
+  carries an `OPEN` marker when profitable.
+- **Round trip** = `(go.end/start) × (return.end/start) − 1`: the result of
+  opening and immediately closing at current prices — effectively the spread
+  cost of the pair. Shown with and without fees.
+- A chain whose other direction is missing (one book has no liquidity on the
+  needed side) is still shown, with that row marked not available.
+- Each expanded card has a **History chart** button that selects the pair in
+  the Chain history panel.
+- Pairs are sorted by their best leg's profit. The header tile counts pairs.
 
 The API base URL is **not** baked into the bundle. `docker-entrypoint.sh` writes
 `/srv/config.js` from the `API_URL` variable at container start, so one image can

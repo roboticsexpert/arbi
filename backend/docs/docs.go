@@ -15,6 +15,206 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/mt5/ticks": {
+            "post": {
+                "description": "Accepts top-of-book quotes pushed by the MetaTrader 5 Expert Advisor",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "MT5"
+                ],
+                "summary": "Ingest MetaTrader 5 ticks",
+                "parameters": [
+                    {
+                        "description": "Ticks",
+                        "name": "ticks",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/mt5.PushRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mt5.PushResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/arbitrage": {
+            "get": {
+                "description": "Returns the latest calculated arbitrage opportunities",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Arbitrage"
+                ],
+                "summary": "Get arbitrage chains",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/arbitrage.ArbitrageChain"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/balances": {
+            "get": {
+                "description": "Returns the latest wallet balances per price source",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Balances"
+                ],
+                "summary": "Get wallet balances",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/metrics.ExchangeBalances"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/history": {
+            "get": {
+                "description": "Profit percentage per chain path in minute buckets (or coarser for long ranges)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "History"
+                ],
+                "summary": "Chain profit history",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Chain path, repeatable (max 10)",
+                        "name": "path",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Range start, unix seconds (default: 24h ago)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Range end, unix seconds (default: now)",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Bucket size in minutes: 1, 5, 15, 60, 240 or 1440 (default: auto)",
+                        "name": "step",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/history/paths": {
+            "get": {
+                "description": "Every arbitrage chain path that has recorded history, most recently seen first",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "History"
+                ],
+                "summary": "Chain paths with history",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/history.PathInfo"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/orderbooks": {
             "get": {
                 "description": "Returns all orderbooks from all exchanges",
@@ -38,21 +238,21 @@ const docTemplate = `{
                 }
             }
         },
-        "/orderbooks/{exchange}": {
+        "/orderbooks/{source}": {
             "get": {
-                "description": "Returns all orderbooks for a specific exchange",
+                "description": "Returns all orderbooks for a specific price source",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Orderbooks"
                 ],
-                "summary": "Get orderbooks by exchange",
+                "summary": "Get orderbooks by source",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Exchange name (e.g., kucoin)",
-                        "name": "exchange",
+                        "description": "Price source name (e.g., kucoin, binance)",
+                        "name": "source",
                         "in": "path",
                         "required": true
                     }
@@ -70,9 +270,9 @@ const docTemplate = `{
                 }
             }
         },
-        "/orderbooks/{exchange}/{symbol}": {
+        "/orderbooks/{source}/{base}/{quote}": {
             "get": {
-                "description": "Returns the orderbook for a specific exchange and symbol",
+                "description": "Returns the orderbook for a specific price source, base and quote currency",
                 "produces": [
                     "application/json"
                 ],
@@ -83,15 +283,22 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Exchange name (e.g., kucoin)",
-                        "name": "exchange",
+                        "description": "Price source name (e.g., kucoin, binance)",
+                        "name": "source",
                         "in": "path",
                         "required": true
                     },
                     {
                         "type": "string",
-                        "description": "Trading pair symbol (e.g., BTC-USDT)",
-                        "name": "symbol",
+                        "description": "Base currency (e.g., BTC)",
+                        "name": "base",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote currency (e.g., USDT)",
+                        "name": "quote",
                         "in": "path",
                         "required": true
                     }
@@ -110,6 +317,27 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "string"
                             }
+                        }
+                    }
+                }
+            }
+        },
+        "/overview": {
+            "get": {
+                "description": "Returns orderbooks, arbitrage chains, balances and stats in one payload",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "Dashboard overview",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }
@@ -160,6 +388,201 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "arbitrage.ArbitrageChain": {
+            "type": "object",
+            "properties": {
+                "end_amount": {
+                    "type": "number"
+                },
+                "end_amount_no_fee": {
+                    "description": "Without fee calculations",
+                    "type": "number"
+                },
+                "end_currency": {
+                    "type": "string"
+                },
+                "path": {
+                    "description": "Human readable path like \"IRT -\u003e USDT (nobitex) -\u003e PAXG (binance) -\u003e GOLD18 (convert) -\u003e IRT (ecogold)\"",
+                    "type": "string"
+                },
+                "profit_loss": {
+                    "type": "number"
+                },
+                "profit_loss_no_fee": {
+                    "type": "number"
+                },
+                "profit_percent": {
+                    "type": "number"
+                },
+                "profit_percent_no_fee": {
+                    "type": "number"
+                },
+                "start_amount": {
+                    "type": "number"
+                },
+                "start_currency": {
+                    "type": "string"
+                },
+                "steps": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/arbitrage.ChainStep"
+                    }
+                }
+            }
+        },
+        "arbitrage.ChainStep": {
+            "type": "object",
+            "properties": {
+                "fixed_conversion": {
+                    "$ref": "#/definitions/arbitrage.FixedConversionStep"
+                },
+                "trade": {
+                    "$ref": "#/definitions/arbitrage.TradeStep"
+                },
+                "type": {
+                    "description": "\"trade\" or \"conversion\"",
+                    "type": "string"
+                }
+            }
+        },
+        "arbitrage.FixedConversionStep": {
+            "type": "object",
+            "properties": {
+                "amount_in": {
+                    "type": "number"
+                },
+                "amount_out": {
+                    "type": "number"
+                },
+                "from": {
+                    "type": "string"
+                },
+                "rate": {
+                    "type": "number"
+                },
+                "to": {
+                    "type": "string"
+                }
+            }
+        },
+        "arbitrage.TradeStep": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "description": "\"buy\" or \"sell\"",
+                    "type": "string"
+                },
+                "amount": {
+                    "description": "amount of base currency",
+                    "type": "number"
+                },
+                "amount_out": {
+                    "description": "what we get after the trade (after fee)",
+                    "type": "number"
+                },
+                "base": {
+                    "type": "string"
+                },
+                "exchange": {
+                    "$ref": "#/definitions/orderbook.PriceSourceName"
+                },
+                "fee_percent": {
+                    "description": "trading fee as percentage (0.1 = 0.1%)",
+                    "type": "number"
+                },
+                "price": {
+                    "description": "effective price after orderbook depth",
+                    "type": "number"
+                },
+                "quote": {
+                    "type": "string"
+                },
+                "volume": {
+                    "description": "volume in quote currency",
+                    "type": "number"
+                }
+            }
+        },
+        "history.PathInfo": {
+            "type": "object",
+            "properties": {
+                "first_seen": {
+                    "description": "unix seconds",
+                    "type": "integer"
+                },
+                "last_seen": {
+                    "type": "integer"
+                },
+                "path": {
+                    "type": "string"
+                }
+            }
+        },
+        "metrics.ExchangeBalances": {
+            "type": "object",
+            "properties": {
+                "balances": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "number",
+                        "format": "float64"
+                    }
+                },
+                "exchange": {
+                    "type": "string"
+                },
+                "last_fetched": {
+                    "type": "string"
+                }
+            }
+        },
+        "mt5.PushRequest": {
+            "type": "object",
+            "properties": {
+                "ticks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/mt5.Tick"
+                    }
+                }
+            }
+        },
+        "mt5.PushResult": {
+            "type": "object",
+            "properties": {
+                "accepted": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "skipped": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "mt5.Tick": {
+            "type": "object",
+            "properties": {
+                "ask": {
+                    "type": "number"
+                },
+                "bid": {
+                    "type": "number"
+                },
+                "symbol": {
+                    "type": "string"
+                },
+                "time": {
+                    "description": "Time is the broker's tick time in unix seconds. Optional: when absent or\nzero the server's own clock is used.",
+                    "type": "integer"
+                }
+            }
+        },
         "orderbook.OrderBook": {
             "type": "object",
             "properties": {
@@ -169,17 +592,20 @@ const docTemplate = `{
                         "$ref": "#/definitions/orderbook.PriceLevel"
                     }
                 },
+                "base": {
+                    "type": "string"
+                },
                 "bids": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/orderbook.PriceLevel"
                     }
                 },
-                "exchange": {
+                "quote": {
                     "type": "string"
                 },
-                "symbol": {
-                    "type": "string"
+                "source": {
+                    "$ref": "#/definitions/orderbook.PriceSourceName"
                 },
                 "timestamp": {
                     "type": "integer"
@@ -199,6 +625,23 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "orderbook.PriceSourceName": {
+            "type": "string",
+            "enum": [
+                "binance",
+                "kucoin",
+                "ecogold",
+                "nobitex",
+                "mt5"
+            ],
+            "x-enum-varnames": [
+                "PriceSourceBinance",
+                "PriceSourceKucoin",
+                "PriceSourceEcoGold",
+                "PriceSourceNobitex",
+                "PriceSourceMT5"
+            ]
         },
         "orderbook.SourceStats": {
             "type": "object",
@@ -231,7 +674,7 @@ const docTemplate = `{
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
-	Host:             "localhost:8080",
+	Host:             "",
 	BasePath:         "/",
 	Schemes:          []string{"http", "https"},
 	Title:            "Arbi API",
